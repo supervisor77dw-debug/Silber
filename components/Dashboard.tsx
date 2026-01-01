@@ -22,6 +22,7 @@ interface DashboardData {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState(30);
 
   useEffect(() => {
@@ -31,10 +32,19 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       const response = await fetch('/api/dashboard');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData.details || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(message);
+      }
+      
       const result = await response.json();
       setData(result);
+      setError(null);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      setError(error instanceof Error ? error.message : 'Unbekannter Fehler');
     } finally {
       setLoading(false);
     }
@@ -44,6 +54,35 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Laden...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-2xl p-8">
+          <h2 className="text-2xl font-bold mb-4 text-red-600">Fehler beim Laden der Daten</h2>
+          <p className="text-gray-700 dark:text-gray-300 mb-6 font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded">
+            {error}
+          </p>
+          <div className="space-y-3 text-left text-sm text-gray-600 dark:text-gray-400">
+            <p><strong>Mögliche Ursachen:</strong></p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>Datenbank ist nicht konfiguriert (DATABASE_URL, DIRECT_URL)</li>
+              <li>Datenbank-Migrationen wurden nicht ausgeführt</li>
+              <li>Verbindung zur Datenbank fehlgeschlagen</li>
+              <li>Keine Daten vorhanden (erster Abruf erforderlich)</li>
+            </ul>
+            <p className="mt-4"><strong>Siehe DEPLOYMENT.md für Details</strong></p>
+          </div>
+          <button
+            onClick={fetchDashboardData}
+            className="mt-6 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Erneut versuchen
+          </button>
+        </div>
       </div>
     );
   }

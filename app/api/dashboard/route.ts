@@ -66,8 +66,20 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isDbError = errorMessage.includes('Can\'t reach database') || 
+                      errorMessage.includes('P1001') || 
+                      errorMessage.includes('ECONNREFUSED');
+    
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard data' },
+      { 
+        error: 'Failed to fetch dashboard data',
+        details: errorMessage,
+        hint: isDbError 
+          ? 'Database connection failed. Check DATABASE_URL and DIRECT_URL environment variables.'
+          : 'Internal server error. Check server logs for details.'
+      },
       { status: 500 }
     );
   }
