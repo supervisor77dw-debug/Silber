@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // COMEX Warehouse Stocks (Daily Snapshot)
@@ -30,6 +31,8 @@ model ComexStock {
   
   // Metadata
   sourceUrl        String?
+  rawHash          String?   // SHA-256 of downloaded file
+  metaJson         String?   // JSON: {sheetName, headerMap, rowsParsed, warnings}
   rawDataPath      String?
   fetchedAt        DateTime @default(now()) @db.Timestamptz
   isValidated      Boolean  @default(false)
@@ -74,6 +77,10 @@ model SgePrice {
   // Metadata
   unit            String   @default("CNY/g")
   sourceUrl       String?
+  fxRateUsed      Float?   // USD/CNY rate used for conversion
+  metaJson        String?  // JSON: {source, fetchMethod, warnings}
+  fetchedAt       DateTime @default(now()) @db.Timestamptz
+  sourceUrl       String?
   fetchedAt       DateTime @default(now()) @db.Timestamptz
   isValidated     Boolean  @default(false)
   
@@ -98,8 +105,10 @@ model FxRate {
 // COMEX Reference Price (Spot or Near-month)
 model ComexPrice {
   id            String   @id @default(cuid())
-  date          DateTime @unique @db.Date
+  sourceName    String?  // "metals-api", "metals.dev", "yahoo", "manual"
   
+  sourceUrl     String?
+  metaJson      String?  // JSON: {apiProvider, fallbackUsed}
   priceUsdPerOz Float
   contract      String   @default("Spot")
   
@@ -127,7 +136,11 @@ model DailySpread {
   registered        Float
   eligible          Float
   total             Float
-  registeredPercent Float
+  regData Quality
+  dataQuality       String   @default("OK")  // 'OK', 'WARN', 'FAIL'
+  notesJson         String?  // JSON: {missingData, anomalies, warnings}
+  
+  // isteredPercent Float
   
   // Physical Stress Index
   psi               Float?   // Physical Stress Index = spread / registered_ratio

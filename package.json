@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.0.0 <21.0.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
@@ -11,10 +11,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "cron:fetch": "tsx scripts/fetch-data.ts",
     "cron:backfill": "tsx scripts/backfill.ts"
