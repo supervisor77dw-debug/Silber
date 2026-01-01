@@ -1,0 +1,199 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// COMEX Warehouse Stocks (Daily Snapshot)
+model ComexStock {
+  id               String   @id @default(cuid())
+  date             DateTime @unique
+  
+  // Aggregated values
+  totalRegistered  Float
+  totalEligible    Float
+  totalCombined    Float
+  
+  // Daily changes
+  deltaRegistered  Float?
+  deltaEligible    Float?
+  deltaCombined    Float?
+  
+  // Percentage
+  registeredPercent Float?
+  
+  // Metadata
+  sourceUrl        String?
+  rawDataPath      String?
+  fetchedAt        DateTime @default(now()) @db.Timestamptz
+  isValidated      Boolean  @default(false)
+  hasAnomalies     Boolean  @default(false)
+  
+  // Relations
+  warehouses       ComexWarehouse[]
+  
+  @@index([date])
+  @@map("comex_stocks")
+}
+
+// Per-warehouse breakdown (optional detail)
+model ComexWarehouse {
+  id           String      @id @default(cuid())
+  stockId      String
+  stock        ComexStock  @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  
+  warehouseName String     // Brinks, Loomis, etc.
+  registered    Float
+  eligible      Float
+  
+  // Daily movements
+  deposits      Float?
+  withdrawals   Float?
+  adjustments   Float?
+  
+  @@map("comex_warehouses")
+}
+
+// SGE Shanghai Silver Benchmark Price
+model SgePrice {
+  id            String   @id @default(cuid())
+  date          DateTime @unique @db.Date
+  
+  // Price in original currency (CNY/g)
+  priceCnyPerGram Float
+  
+  // Converted to USD/oz
+  priceUsdPerOz   Float
+  
+  // Metadata
+  unit            String   @default("CNY/g")
+  sourceUrl       String?
+  fetchedAt       DateTime @default(now()) @db.Timestamptz
+  isValidated     Boolean  @default(false)
+  
+  @@index([date])
+  @@map("sge_prices")
+}
+
+// FX Rates (USD/CNY)
+model FxRate {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  
+  usdCnyRate  Float
+  source      String   @default("ECB")
+  
+  fetchedAt   DateTime @default(now())
+  
+  @@index([date])
+  @@map("fx_rates")
+}
+
+// COMEX Reference Price (Spot or Near-month)
+model ComexPrice {
+  id            String   @id @default(cuid())
+  date          DateTime @unique @db.Date
+  
+  priceUsdPerOz Float
+  contract      String   @default("Spot")
+  
+  sourceUrl     String?
+  fetchedAt     DateTime @default(now()) @db.Timestamptz
+  
+  @@index([date])
+  @@map("comex_prices")
+}
+
+// Calculated Daily Spreads
+model DailySpread {
+  id                String   @id @default(cuid())
+  date              DateTime @unique @db.Date
+  
+  // Prices
+  sgeUsdPerOz       Float
+  comexUsdPerOz     Float
+  
+  // Spreads
+  spreadUsdPerOz    Float
+  spreadPercent     Float
+  
+  // COMEX stocks on this date
+  registered        Float
+  eligible          Float
+  total             Float
+  registeredPercent Float
+  
+  // Physical Stress Index
+  psi               Float?   // Physical Stress Index = spread / registered_ratio
+  psiStressLevel    String?  // 'EXTREME', 'HIGH', 'MODERATE', 'LOW'
+  
+  // Flags
+  isExtreme         Boolean  @default(false)
+  zScore            Float?
+  
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  
+  @@index([date])
+  @@map("daily_spreads")
+}
+
+// Data Fetch Log (for monitoring)
+model FetchLog {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  source      String   // "COMEX", "SGE", "FX"
+  
+  status      String   // "success", "error", "partial"
+  statusCode  Int?
+  errorMsg    String?
+  
+  fetchedAt   DateTime @default(now()) @db.Timestamptz
+  duration    Int?     // milliseconds
+  
+  @@index([date, source])
+  @@map("fetch_logs")
+}
+
+// Alert Configuration
+model AlertConfig {
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  
+  enabled               Boolean  @default(true)
+  
+  // Threshold values
+  spreadThreshold       Float?
+  registeredThreshold   Float?
+  withdrawalThreshold   Float?
+  
+  // Notification channels
+  emailEnabled          Boolean  @default(false)
+  telegramEnabled       Boolean  @default(false)
+  
+  updatedAt             DateTime @updatedAt
+  
+  @@map("alert_configs")
+}
+
+// Alert History
+model AlertHistory {
+  id          String   @id @default(cuid())
+  date        DateTime
+  
+  alertType   String   // "spread", "registered", "withdrawal"
+  message     String
+  value       Float
+  threshold   Float
+  
+  notified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  @@index([date, alertType])
+  @@map("alert_history")
+}

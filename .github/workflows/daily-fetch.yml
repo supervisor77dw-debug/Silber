@@ -1,0 +1,44 @@
+name: Daily Data Fetch
+
+on:
+  schedule:
+    # Run every day at 9:00 AM CET (8:00 AM UTC in winter, 7:00 AM UTC in summer)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Generate Prisma Client
+        run: npm run db:generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      
+      - name: Run data fetch
+        run: npm run cron:fetch
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          COMEX_XLS_URL: ${{ secrets.COMEX_XLS_URL }}
+          SGE_API_URL: ${{ secrets.SGE_API_URL }}
+          FX_API_URL: ${{ secrets.FX_API_URL }}
+          FX_API_KEY: ${{ secrets.FX_API_KEY }}
+          ECB_FX_URL: ${{ secrets.ECB_FX_URL }}
+          TZ: 'Europe/Berlin'
+      
+      - name: Notify on failure
+        if: failure()
+        run: echo "Data fetch failed! Check logs."
