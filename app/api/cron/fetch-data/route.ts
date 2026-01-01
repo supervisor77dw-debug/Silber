@@ -178,9 +178,9 @@ export async function POST(request: Request) {
       
       if (comexPriceData && comexPriceData.priceUsdPerOz > 0) {
         await prisma.comexPrice.upsert({
-          where: { date: marketDate },
+          where: { marketDate: marketDate },
           create: {
-            date: marketDate,
+            marketDate: marketDate,
             priceUsdPerOz: comexPriceData.priceUsdPerOz,
             contract: comexPriceData.contract,
             fetchedAt: new Date(),

@@ -44,19 +44,19 @@ async function main() {
     data: [
       {
         id: 'cp001',
-        date: new Date('2026-01-01'),
+        marketDate: new Date('2026-01-01'),
         priceUsdPerOz: 32.50,
         contract: 'Spot',
       },
       {
         id: 'cp002',
-        date: new Date('2025-12-31'),
+        marketDate: new Date('2025-12-31'),
         priceUsdPerOz: 32.45,
         contract: 'Spot',
       },
       {
         id: 'cp003',
-        date: new Date('2025-12-30'),
+        marketDate: new Date('2025-12-30'),
         priceUsdPerOz: 32.40,
         contract: 'Spot',
       },

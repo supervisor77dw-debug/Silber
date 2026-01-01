@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       s.registered.toFixed(0),
       s.eligible.toFixed(0),
       s.total.toFixed(0),
-      s.registeredPercent.toFixed(2),
+      s.registeredPercent?.toFixed(2) || '',
       s.isExtreme ? 'Yes' : 'No',
       s.zScore?.toFixed(2) || '',
     ].join(','));
