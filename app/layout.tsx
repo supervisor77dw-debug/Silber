@@ -4,9 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Silver Market Analysis - COMEX vs SGE Spread",
   description: "Track physical silver availability and price spreads between COMEX and Shanghai Gold Exchange",
-  icons: {
-    icon: '/favicon.svg',
-  },
 };
 
 export default function RootLayout({
