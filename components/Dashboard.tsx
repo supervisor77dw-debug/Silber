@@ -99,13 +99,13 @@ export default function Dashboard() {
             <button
               onClick={async () => {
                 try {
-                  const res = await fetch('/api/cron/fetch-data', { method: 'POST' });
+                  const res = await fetch('/api/trigger-fetch', { method: 'POST' });
                   if (res.ok) {
                     alert('Datenabruf gestartet! Seite wird neu geladen...');
-                    window.location.reload();
+                    setTimeout(() => window.location.reload(), 2000);
                   } else {
-                    const error = await res.text();
-                    alert(`Fehler: ${error}`);
+                    const error = await res.json();
+                    alert(`Fehler: ${error.error || error.details || 'Unbekannter Fehler'}`);
                   }
                 } catch (err) {
                   alert(`Fehler: ${err}`);
