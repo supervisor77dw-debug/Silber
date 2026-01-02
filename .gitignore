@@ -84,7 +84,9 @@ yarn-error.log*
 next-env.d.ts
 
 # prisma
-prisma/migrations
+# Note: migrations should be committed
+prisma/dev.db
+prisma/dev.db-journal
 
 # data files
 /data
