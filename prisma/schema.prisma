@@ -118,6 +118,29 @@ model ComexPrice {
   @@map("comex_prices")
 }
 
+// Historical Metal Prices (for backfill & charts)
+model MetalPrice {
+  id            String   @id @default(cuid())
+  date          DateTime @unique @db.Date
+  
+  // Silver spot price (main field for backfill)
+  xagUsdClose   Float
+  xagUsdOpen    Float?
+  xagUsdHigh    Float?
+  xagUsdLow     Float?
+  
+  volume        Float?
+  
+  // Source tracking
+  source        String   @default("stooq")  // "stooq", "yahoo", "manual"
+  sourceUrl     String?
+  
+  fetchedAt     DateTime @default(now()) @db.Timestamptz
+  
+  @@index([date])
+  @@map("metal_prices")
+}
+
 // Calculated Daily Spreads
 model DailySpread {
   id                String   @id @default(cuid())

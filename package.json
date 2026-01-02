@@ -22,6 +22,7 @@
     "cron:backfill": "tsx scripts/backfill.ts"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@prisma/client": "^5.8.0",
     "axios": "^1.6.5",
     "date-fns": "^3.0.6",

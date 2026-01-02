@@ -6,7 +6,9 @@ import SpreadChart from './SpreadChart';
 import StockChart from './StockChart';
 import PriceChart from './PriceChart';
 import DataQuality from './DataQuality';
+import { ToastNotification, useToast } from './ToastNotification';
 import { format } from 'date-fns';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface DashboardData {
   currentSpread: any;
@@ -17,6 +19,9 @@ interface DashboardData {
     registered: 'up' | 'down' | 'stable';
   };
   weekData: any[];
+  dataStatus?: 'current' | 'yesterday' | 'stale';
+  dataDate?: string;
+  daysSinceUpdate?: number;
 }
 
 export default function Dashboard() {
@@ -24,6 +29,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState(30);
+  const [refreshing, setRefreshing] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     fetchDashboardData();
@@ -31,7 +38,8 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await fetch('/api/dashboard');
+      // DB-First: Lade immer aus der Datenbank
+      const response = await fetch('/api/dashboard-v2');
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -42,11 +50,66 @@ export default function Dashboard() {
       const result = await response.json();
       setData(result);
       setError(null);
+      
+      // Info-Toast bei veralteten Daten
+      if (result.dataStatus === 'stale' && result.daysSinceUpdate) {
+        toast.warning(
+          `Daten sind ${result.daysSinceUpdate} Tage alt`,
+          'Klicken Sie auf "Aktualisieren" um neue Daten abzurufen'
+        );
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       setError(error instanceof Error ? error.message : 'Unbekannter Fehler');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    
+    try {
+      const response = await fetch('/api/refresh', { method: 'POST' });
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        // Erfolg
+        const { successful, unavailable, failed } = result.summary;
+        
+        if (unavailable === 0 && failed === 0) {
+          toast.success(
+            'Alle Datenquellen erfolgreich aktualisiert',
+            `${successful} Quellen live abgerufen`
+          );
+        } else if (successful > 0) {
+          toast.warning(
+            `Teilweise erfolgreich: ${successful} live, ${unavailable} aus DB, ${failed} fehlgeschlagen`,
+            'Zeige verfügbare Daten'
+          );
+        } else {
+          toast.error(
+            'Keine Live-Daten verfügbar',
+            'Zeige letzte gespeicherte Werte aus der Datenbank'
+          );
+        }
+        
+        // Dashboard-Daten neu laden (aus DB)
+        await fetchDashboardData();
+      } else {
+        toast.error(
+          'Aktualisierung fehlgeschlagen',
+          result.message || result.error || 'Zeige letzte gespeicherte Werte'
+        );
+      }
+    } catch (error) {
+      console.error('Refresh error:', error);
+      toast.error(
+        'Netzwerkfehler',
+        'Konnte keine Verbindung zum Server herstellen'
+      );
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -60,138 +123,113 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center max-w-2xl p-8">
-          <h2 className="text-2xl font-bold mb-4 text-red-600">Fehler beim Laden der Daten</h2>
-          <p className="text-gray-700 dark:text-gray-300 mb-6 font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded">
-            {error}
-          </p>
-          <div className="space-y-3 text-left text-sm text-gray-600 dark:text-gray-400">
-            <p><strong>Mögliche Ursachen:</strong></p>
-            <ul className="list-disc list-inside space-y-1 ml-4">
-              <li>Datenbank ist nicht konfiguriert (DATABASE_URL, DIRECT_URL)</li>
-              <li>Datenbank-Migrationen wurden nicht ausgeführt</li>
-              <li>Verbindung zur Datenbank fehlgeschlagen</li>
-              <li>Keine Daten vorhanden (erster Abruf erforderlich)</li>
-            </ul>
-            <p className="mt-4"><strong>Siehe DEPLOYMENT.md für Details</strong></p>
+      <>
+        <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center max-w-2xl p-8">
+            <h2 className="text-2xl font-bold mb-4 text-red-600">Fehler beim Laden der Daten</h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-6 font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded">
+              {error}
+            </p>
+            <div className="space-y-3 text-left text-sm text-gray-600 dark:text-gray-400">
+              <p><strong>Mögliche Ursachen:</strong></p>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>Datenbank ist nicht konfiguriert (DATABASE_URL, DIRECT_URL)</li>
+                <li>Datenbank-Migrationen wurden nicht ausgeführt</li>
+                <li>Verbindung zur Datenbank fehlgeschlagen</li>
+                <li>Keine Daten vorhanden (erster Abruf erforderlich)</li>
+              </ul>
+              <p className="mt-4"><strong>Siehe DEPLOYMENT.md für Details</strong></p>
+            </div>
+            <button
+              onClick={fetchDashboardData}
+              className="mt-6 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Erneut versuchen
+            </button>
           </div>
-          <button
-            onClick={fetchDashboardData}
-            className="mt-6 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Erneut versuchen
-          </button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!data || !data.currentSpread) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center max-w-xl p-8">
-          <h2 className="text-2xl font-bold mb-4">Keine Daten verfügbar</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Die Datenbank ist leer. Bitte führen Sie den ersten Datenabruf durch.
-          </p>
-          <div className="space-y-3">
-            <button
-              onClick={async () => {
-                try {
-                  const button = document.activeElement as HTMLButtonElement;
-                  if (button) button.disabled = true;
-                  button.textContent = 'Datenabruf läuft...';
-                  
-                  const res = await fetch('/api/trigger-fetch', { method: 'POST' });
-                  const result = await res.json();
-                  
-                  if (res.ok && result.success) {
-                    const successCount = Object.values(result.results).filter(Boolean).length;
-                    const totalCount = Object.keys(result.results).length;
-                    
-                    let message = `✓ Datenabruf abgeschlossen: ${successCount}/${totalCount} erfolgreich\n\n`;
-                    
-                    // Show what succeeded
-                    Object.entries(result.results).forEach(([source, success]) => {
-                      message += `${success ? '✓' : '✗'} ${source}\n`;
-                    });
-                    
-                    // Show errors if any
-                    if (result.errors && result.errors.length > 0) {
-                      message += '\n⚠ Fehler:\n';
-                      result.errors.forEach((err: any) => {
-                        message += `- ${err.source}: ${err.message}\n`;
-                      });
-                    }
-                    
-                    alert(message);
-                    
-                    if (successCount > 0) {
-                      setTimeout(() => window.location.reload(), 1500);
-                    }
-                  } else {
-                    let errorMsg = 'Datenabruf fehlgeschlagen:\n\n';
-                    
-                    if (result.errors && result.errors.length > 0) {
-                      result.errors.forEach((err: any) => {
-                        errorMsg += `✗ ${err.source}: ${err.message}\n`;
-                      });
-                    } else {
-                      errorMsg += result.error || result.details || 'Unbekannter Fehler';
-                    }
-                    
-                    errorMsg += '\n\nTipps:\n';
-                    errorMsg += '- Prüfe ob API-Keys konfiguriert sind (METALS_API_KEY)\n';
-                    errorMsg += '- Siehe /api/debug/prices für Details (DEBUG_PRICES=1)\n';
-                    errorMsg += '- Siehe Vercel Function Logs';
-                    
-                    alert(errorMsg);
-                  }
-                  
-                  if (button) {
-                    button.disabled = false;
-                    button.textContent = 'Ersten Datenabruf durchführen';
-                  }
-                } catch (err) {
-                  alert(`Netzwerk-Fehler: ${err}`);
-                }
-              }}
-              className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
-            >
-              Ersten Datenabruf durchführen
-            </button>
-            <div className="mt-4">
-              <a 
-                href="/api/health" 
-                target="_blank"
-                className="text-sm text-blue-600 hover:underline"
+      <>
+        <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center max-w-xl p-8">
+            <h2 className="text-2xl font-bold mb-4">Keine Daten verfügbar</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Die Datenbank ist leer. Bitte führen Sie den ersten Datenabruf durch.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                → Datenbank-Status prüfen
-              </a>
+                {refreshing ? 'Datenabruf läuft...' : 'Ersten Datenabruf durchführen'}
+              </button>
+              <div className="mt-4">
+                <a 
+                  href="/api/health-v2" 
+                  target="_blank"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  → Datenbank-Status prüfen
+                </a>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  const { currentSpread, currentStock, lastFetch, trends } = data;
+  const { currentSpread, currentStock, lastFetch, trends, dataStatus, dataDate, daysSinceUpdate } = data;
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
-          Silver Market Analysis
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          COMEX vs SGE Spread-Tracker
-        </p>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-          Letzte Aktualisierung: {lastFetch ? format(new Date(lastFetch.fetchedAt), 'dd.MM.yyyy HH:mm') : 'N/A'}
-        </p>
-      </div>
+    <>
+      <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
+      
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Header */}
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
+              Silver Market Analysis
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              COMEX vs SGE Spread-Tracker
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-sm text-gray-500 dark:text-gray-500">
+                Daten vom: {dataDate || (lastFetch ? format(new Date(lastFetch.fetchedAt), 'dd.MM.yyyy') : 'N/A')}
+              </p>
+              {dataStatus && (
+                <span className={`px-2 py-1 text-xs rounded-full ${
+                  dataStatus === 'current' 
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                    : dataStatus === 'yesterday'
+                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                    : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+                }`}>
+                  {dataStatus === 'current' ? '✓ Aktuell' : dataStatus === 'yesterday' ? '⚠ Gestern' : `⚠ ${daysSinceUpdate} Tage alt`}
+                </span>
+              )}
+            </div>
+          </div>
+          
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ArrowPathIcon className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Lädt...' : 'Aktualisieren'}</span>
+          </button>
+        </div>
 
       {/* Data Quality */}
       <DataQuality lastFetch={lastFetch} />
@@ -327,6 +365,7 @@ export default function Dashboard() {
           Hinweis: Registered ≠ Total physical accessible. Diese App dient nur zu Informationszwecken.
         </p>
       </footer>
-    </div>
+      </div>
+    </>
   );
 }
