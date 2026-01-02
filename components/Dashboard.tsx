@@ -90,17 +90,41 @@ export default function Dashboard() {
   if (!data || !data.currentSpread) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
+        <div className="text-center max-w-xl p-8">
           <h2 className="text-2xl font-bold mb-4">Keine Daten verfügbar</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Bitte führen Sie den ersten Datenabruf durch.
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Die Datenbank ist leer. Bitte führen Sie den ersten Datenabruf durch.
           </p>
-          <button
-            onClick={() => fetch('/api/cron/fetch-data', { method: 'POST' })}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Daten jetzt abrufen
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/cron/fetch-data', { method: 'POST' });
+                  if (res.ok) {
+                    alert('Datenabruf gestartet! Seite wird neu geladen...');
+                    window.location.reload();
+                  } else {
+                    const error = await res.text();
+                    alert(`Fehler: ${error}`);
+                  }
+                } catch (err) {
+                  alert(`Fehler: ${err}`);
+                }
+              }}
+              className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
+            >
+              Ersten Datenabruf durchführen
+            </button>
+            <div className="mt-4">
+              <a 
+                href="/api/health" 
+                target="_blank"
+                className="text-sm text-blue-600 hover:underline"
+              >
+                → Datenbank-Status prüfen
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     );
