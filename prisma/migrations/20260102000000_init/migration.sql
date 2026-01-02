@@ -102,10 +102,13 @@ CREATE TABLE "daily_spreads" (
 -- CreateTable
 CREATE TABLE "fetch_logs" (
     "id" TEXT NOT NULL,
-    "fetchedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "date" DATE NOT NULL,
+    "source" TEXT NOT NULL,
     "status" TEXT NOT NULL,
-    "errors" TEXT,
-    "dataDate" DATE,
+    "statusCode" INTEGER,
+    "errorMsg" TEXT,
+    "fetchedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "duration" INTEGER,
 
     CONSTRAINT "fetch_logs_pkey" PRIMARY KEY ("id")
 );
@@ -142,6 +145,9 @@ CREATE INDEX "daily_spreads_date_idx" ON "daily_spreads"("date");
 
 -- CreateIndex
 CREATE INDEX "fetch_logs_fetchedAt_idx" ON "fetch_logs"("fetchedAt");
+
+-- CreateIndex
+CREATE INDEX "fetch_logs_date_source_idx" ON "fetch_logs"("date", "source");
 
 -- AddForeignKey
 ALTER TABLE "comex_warehouses" ADD CONSTRAINT "comex_warehouses_stockId_fkey" FOREIGN KEY ("stockId") REFERENCES "comex_stocks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
