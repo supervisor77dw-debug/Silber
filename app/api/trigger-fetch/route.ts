@@ -44,18 +44,12 @@ export async function POST() {
             totalRegistered: comexData.totalRegistered,
             totalEligible: comexData.totalEligible,
             totalCombined: comexData.totalCombined,
-            deltaRegistered: comexData.deltaRegistered,
-            deltaEligible: comexData.deltaEligible,
-            deltaCombined: comexData.deltaCombined,
             registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
           },
           update: {
             totalRegistered: comexData.totalRegistered,
             totalEligible: comexData.totalEligible,
             totalCombined: comexData.totalCombined,
-            deltaRegistered: comexData.deltaRegistered,
-            deltaEligible: comexData.deltaEligible,
-            deltaCombined: comexData.deltaCombined,
             registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
           },
         });
