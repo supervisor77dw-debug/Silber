@@ -82,11 +82,38 @@ export async function POST() {
       errors.push({ source: 'FX', message: error instanceof Error ? error.message : String(error) });
     }
 
-    // Fetch SGE Price (only if we have FX rate)
+    // Fetch COMEX Price (fetch before SGE to enable Provider D fallback)
+    let comexPriceData;
+    try {
+      comexPriceData = await fetchComexSpotPriceWithRetry(marketDate, 2);
+      if (comexPriceData && comexPriceData.priceUsdPerOz > 0) {
+        await prisma.comexPrice.upsert({
+          where: { marketDate: marketDate },
+          create: {
+            marketDate: marketDate,
+            priceUsdPerOz: comexPriceData.priceUsdPerOz,
+            contract: comexPriceData.contract,
+          },
+          update: {
+            priceUsdPerOz: comexPriceData.priceUsdPerOz,
+            contract: comexPriceData.contract,
+          },
+        });
+        results.comexPrice = true;
+      }
+    } catch (error) {
+      errors.push({ source: 'COMEX_PRICE', message: error instanceof Error ? error.message : String(error) });
+    }
+
+    // Fetch SGE Price (only if we have FX rate, pass COMEX price for fallback)
     let sgePriceData;
     if (fxData?.usdCnyRate) {
       try {
-        sgePriceData = await fetchSgePrice(marketDate, fxData.usdCnyRate);
+        sgePriceData = await fetchSgePrice(
+          marketDate, 
+          fxData.usdCnyRate,
+          comexPriceData?.priceUsdPerOz
+        );
         if (sgePriceData) {
           await prisma.sgePrice.upsert({
             where: { date: marketDate },
@@ -109,29 +136,6 @@ export async function POST() {
       }
     } else {
       errors.push({ source: 'SGE', message: 'Skipped - FX rate not available' });
-    }
-
-    // Fetch COMEX Price
-    let comexPriceData;
-    try {
-      comexPriceData = await fetchComexSpotPriceWithRetry(marketDate, 2);
-      if (comexPriceData && comexPriceData.priceUsdPerOz > 0) {
-        await prisma.comexPrice.upsert({
-          where: { marketDate: marketDate },
-          create: {
-            marketDate: marketDate,
-            priceUsdPerOz: comexPriceData.priceUsdPerOz,
-            contract: comexPriceData.contract,
-          },
-          update: {
-            priceUsdPerOz: comexPriceData.priceUsdPerOz,
-            contract: comexPriceData.contract,
-          },
-        });
-        results.comexPrice = true;
-      }
-    } catch (error) {
-      errors.push({ source: 'COMEX_PRICE', message: error instanceof Error ? error.message : String(error) });
     }
 
     // Calculate spread if we have necessary data
