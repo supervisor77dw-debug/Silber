@@ -54,9 +54,59 @@ export async function POST() {
           },
         });
         results.comexStock = true;
+      } else {
+        // Fallback: Use last known values if current fetch fails
+        const lastStock = await prisma.comexStock.findFirst({
+          orderBy: { date: 'desc' },
+        });
+        
+        if (lastStock) {
+          console.log('⚠ COMEX stocks unavailable, using last known values');
+          comexData = {
+            date: marketDate,
+            totalRegistered: lastStock.totalRegistered,
+            totalEligible: lastStock.totalEligible,
+            totalCombined: lastStock.totalCombined,
+          };
+          errors.push({ source: 'COMEX', message: 'Using last known values (current data unavailable)' });
+        } else if (process.env.COMEX_FALLBACK_REGISTERED) {
+          // Use environment variable fallback
+          const fallbackRegistered = parseFloat(process.env.COMEX_FALLBACK_REGISTERED);
+          const fallbackEligible = parseFloat(process.env.COMEX_FALLBACK_ELIGIBLE || '0');
+          
+          console.log('⚠ COMEX stocks unavailable, using fallback values from ENV');
+          comexData = {
+            date: marketDate,
+            totalRegistered: fallbackRegistered,
+            totalEligible: fallbackEligible,
+            totalCombined: fallbackRegistered + fallbackEligible,
+          };
+          errors.push({ source: 'COMEX', message: 'Using fallback values from ENV (current data unavailable)' });
+        } else {
+          errors.push({ source: 'COMEX', message: 'Current data unavailable and no fallback configured' });
+        }
       }
     } catch (error) {
       errors.push({ source: 'COMEX', message: error instanceof Error ? error.message : String(error) });
+      
+      // Try fallback even on error
+      try {
+        const lastStock = await prisma.comexStock.findFirst({
+          orderBy: { date: 'desc' },
+        });
+        
+        if (lastStock) {
+          console.log('⚠ COMEX error, using last known values');
+          comexData = {
+            date: marketDate,
+            totalRegistered: lastStock.totalRegistered,
+            totalEligible: lastStock.totalEligible,
+            totalCombined: lastStock.totalCombined,
+          };
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
     }
 
     // Fetch FX Rate
