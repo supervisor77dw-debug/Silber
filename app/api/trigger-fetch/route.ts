@@ -82,29 +82,33 @@ export async function POST() {
       errors.push({ source: 'FX', message: error instanceof Error ? error.message : String(error) });
     }
 
-    // Fetch SGE Price
+    // Fetch SGE Price (only if we have FX rate)
     let sgePriceData;
-    try {
-      sgePriceData = await fetchSgePrice(marketDate, fxData?.usdCnyRate);
-      if (sgePriceData) {
-        await prisma.sgePrice.upsert({
-          where: { date: marketDate },
-          create: {
-            date: marketDate,
-            priceCnyPerGram: sgePriceData.priceCnyPerGram,
-            priceUsdPerOz: sgePriceData.priceUsdPerOz,
-            fxRateUsed: fxData?.usdCnyRate,
-          },
-          update: {
-            priceCnyPerGram: sgePriceData.priceCnyPerGram,
-            priceUsdPerOz: sgePriceData.priceUsdPerOz,
-            fxRateUsed: fxData?.usdCnyRate,
-          },
-        });
-        results.sgePrice = true;
+    if (fxData?.usdCnyRate) {
+      try {
+        sgePriceData = await fetchSgePrice(marketDate, fxData.usdCnyRate);
+        if (sgePriceData) {
+          await prisma.sgePrice.upsert({
+            where: { date: marketDate },
+            create: {
+              date: marketDate,
+              priceCnyPerGram: sgePriceData.priceCnyPerGram,
+              priceUsdPerOz: sgePriceData.priceUsdPerOz,
+              fxRateUsed: fxData.usdCnyRate,
+            },
+            update: {
+              priceCnyPerGram: sgePriceData.priceCnyPerGram,
+              priceUsdPerOz: sgePriceData.priceUsdPerOz,
+              fxRateUsed: fxData.usdCnyRate,
+            },
+          });
+          results.sgePrice = true;
+        }
+      } catch (error) {
+        errors.push({ source: 'SGE', message: error instanceof Error ? error.message : String(error) });
       }
-    } catch (error) {
-      errors.push({ source: 'SGE', message: error instanceof Error ? error.message : String(error) });
+    } else {
+      errors.push({ source: 'SGE', message: 'Skipped - FX rate not available' });
     }
 
     // Fetch COMEX Price
