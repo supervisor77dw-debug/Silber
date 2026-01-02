@@ -142,11 +142,11 @@ export async function POST() {
           comexPriceData.priceUsdPerOz
         );
         
-        const psi = calculatePhysicalStressIndex(
-          spread.spreadPercent,
-          comexData.totalRegistered,
-          comexData.totalCombined
-        );
+        const psiResult = calculatePhysicalStressIndex({
+          spreadUsdPerOz: spread.spreadUsdPerOz,
+          totalRegistered: comexData.totalRegistered,
+          totalCombined: comexData.totalCombined,
+        });
 
         await prisma.dailySpread.upsert({
           where: { date: marketDate },
@@ -159,9 +159,9 @@ export async function POST() {
             registered: comexData.totalRegistered,
             eligible: comexData.totalEligible,
             total: comexData.totalCombined,
-            registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
-            psi: psi.value,
-            psiStressLevel: psi.level,
+            registeredPercent: psiResult.registeredPercent,
+            psi: psiResult.psi,
+            psiStressLevel: psiResult.stressLevel,
           },
           update: {
             sgeUsdPerOz: sgePriceData.priceUsdPerOz,
@@ -171,9 +171,9 @@ export async function POST() {
             registered: comexData.totalRegistered,
             eligible: comexData.totalEligible,
             total: comexData.totalCombined,
-            registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
-            psi: psi.value,
-            psiStressLevel: psi.level,
+            registeredPercent: psiResult.registeredPercent,
+            psi: psiResult.psi,
+            psiStressLevel: psiResult.stressLevel,
           },
         });
         results.spread = true;
