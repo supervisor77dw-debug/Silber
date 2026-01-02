@@ -99,16 +99,62 @@ export default function Dashboard() {
             <button
               onClick={async () => {
                 try {
+                  const button = document.activeElement as HTMLButtonElement;
+                  if (button) button.disabled = true;
+                  button.textContent = 'Datenabruf läuft...';
+                  
                   const res = await fetch('/api/trigger-fetch', { method: 'POST' });
-                  if (res.ok) {
-                    alert('Datenabruf gestartet! Seite wird neu geladen...');
-                    setTimeout(() => window.location.reload(), 2000);
+                  const result = await res.json();
+                  
+                  if (res.ok && result.success) {
+                    const successCount = Object.values(result.results).filter(Boolean).length;
+                    const totalCount = Object.keys(result.results).length;
+                    
+                    let message = `✓ Datenabruf abgeschlossen: ${successCount}/${totalCount} erfolgreich\n\n`;
+                    
+                    // Show what succeeded
+                    Object.entries(result.results).forEach(([source, success]) => {
+                      message += `${success ? '✓' : '✗'} ${source}\n`;
+                    });
+                    
+                    // Show errors if any
+                    if (result.errors && result.errors.length > 0) {
+                      message += '\n⚠ Fehler:\n';
+                      result.errors.forEach((err: any) => {
+                        message += `- ${err.source}: ${err.message}\n`;
+                      });
+                    }
+                    
+                    alert(message);
+                    
+                    if (successCount > 0) {
+                      setTimeout(() => window.location.reload(), 1500);
+                    }
                   } else {
-                    const error = await res.json();
-                    alert(`Fehler: ${error.error || error.details || 'Unbekannter Fehler'}`);
+                    let errorMsg = 'Datenabruf fehlgeschlagen:\n\n';
+                    
+                    if (result.errors && result.errors.length > 0) {
+                      result.errors.forEach((err: any) => {
+                        errorMsg += `✗ ${err.source}: ${err.message}\n`;
+                      });
+                    } else {
+                      errorMsg += result.error || result.details || 'Unbekannter Fehler';
+                    }
+                    
+                    errorMsg += '\n\nTipps:\n';
+                    errorMsg += '- Prüfe ob API-Keys konfiguriert sind (METALS_API_KEY)\n';
+                    errorMsg += '- Siehe /api/debug/prices für Details (DEBUG_PRICES=1)\n';
+                    errorMsg += '- Siehe Vercel Function Logs';
+                    
+                    alert(errorMsg);
+                  }
+                  
+                  if (button) {
+                    button.disabled = false;
+                    button.textContent = 'Ersten Datenabruf durchführen';
                   }
                 } catch (err) {
-                  alert(`Fehler: ${err}`);
+                  alert(`Netzwerk-Fehler: ${err}`);
                 }
               }}
               className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
