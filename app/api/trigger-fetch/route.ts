@@ -115,7 +115,7 @@ export async function POST() {
     let comexPriceData;
     try {
       comexPriceData = await fetchComexSpotPriceWithRetry(marketDate, 2);
-      if (comexPriceData?.priceUsdPerOz > 0) {
+      if (comexPriceData && comexPriceData.priceUsdPerOz > 0) {
         await prisma.comexPrice.upsert({
           where: { marketDate: marketDate },
           create: {
