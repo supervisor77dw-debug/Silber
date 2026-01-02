@@ -83,7 +83,21 @@ export async function POST() {
           };
           errors.push({ source: 'COMEX', message: 'Using fallback values from ENV (current data unavailable)' });
         } else {
-          errors.push({ source: 'COMEX', message: 'Current data unavailable and no fallback configured' });
+          // Use reasonable default values (typical COMEX silver inventory levels)
+          console.log('⚠ COMEX stocks unavailable, using default fallback values');
+          const defaultRegistered = 50000000; // 50M oz - typical registered inventory
+          const defaultEligible = 250000000;   // 250M oz - typical eligible inventory
+          
+          comexData = {
+            date: marketDate,
+            totalRegistered: defaultRegistered,
+            totalEligible: defaultEligible,
+            totalCombined: defaultRegistered + defaultEligible,
+          };
+          errors.push({ 
+            source: 'COMEX', 
+            message: 'Using default fallback values (current data unavailable, no DB history). Set COMEX_FALLBACK_REGISTERED/ELIGIBLE in ENV for custom values.' 
+          });
         }
       }
     } catch (error) {
