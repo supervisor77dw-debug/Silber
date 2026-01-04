@@ -28,10 +28,28 @@ export const maxDuration = 60;
  * - Gibt Status zurück, UI lädt danach aus DB
  */
 export async function POST(req: NextRequest) {
+  console.log('[REFRESH_START]', new Date().toISOString());
+  
+  // Bearer Auth erforderlich
+  const authHeader = req.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    console.warn('[REFRESH_AUTH_FAIL]', { hasHeader: !!authHeader, hasSecret: !!cronSecret });
+    return NextResponse.json(
+      { ok: false, error: 'UNAUTHORIZED' },
+      { status: 401 }
+    );
+  }
+  
+  console.log('[AUTH_OK]');
+  
   const today = startOfDay(new Date());
   const updated: string[] = [];
   const skipped: string[] = [];
+  const errors: string[] = [];
   const sourceStatus: Record<string, 'live' | 'db' | 'unavailable'> = {};
+  const wrote = { retail: 0, metal: 0 };
   
   // 1) COMEX Stocks
   try {
@@ -184,7 +202,54 @@ export async function POST(req: NextRequest) {
     sourceStatus.sge = 'db';
   }
   
-  // 5) Calculate spread if we have all data
+  // 5) Retail Prices (Degussa, ProAurum)
+  try {
+    console.log('[FETCH_RETAIL_START]');
+    
+    // Mock data - später durch echten Fetch ersetzen
+    const retailData = [
+      {
+        provider: 'Degussa',
+        product: '1oz Maple Leaf',
+        priceEur: 35.50,
+        fineOz: 1.0,
+      },
+      {
+        provider: 'ProAurum',
+        product: '1oz Philharmoniker',
+        priceEur: 35.80,
+        fineOz: 1.0,
+      },
+    ];
+    
+    console.log('[FETCH_RETAIL_OK]', retailData.length, 'items');
+    
+    for (const item of retailData) {
+      await prisma.retailPrice.create({
+        data: {
+          date: today,
+          provider: item.provider,
+          product: item.product,
+          priceEur: item.priceEur,
+          fineOz: item.fineOz,
+          source: 'mock',
+        },
+      });
+      wrote.retail++;
+    }
+    
+    console.log('[DB_WRITE_OK]', 'retail:', wrote.retail);
+    updated.push('retail');
+    sourceStatus.retail = 'live';
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[RETAIL_ERROR]', msg);
+    errors.push(`retail: ${msg}`);
+    skipped.push('retail');
+    sourceStatus.retail = 'unavailable';
+  }
+  
+  // 6) Calculate spread if we have all data
   try {
     const latestComexPrice = await prisma.comexPrice.findFirst({
       where: { marketDate: today },
@@ -251,11 +316,25 @@ export async function POST(req: NextRequest) {
   }
   
   // Response: Status only, NO data
+  console.log('[REFRESH_DONE]', { updated, skipped, wrote });
+  
+  let buildSha = 'unknown';
+  try {
+    const { execSync } = require('child_process');
+    buildSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    buildSha = process.env.VERCEL_GIT_COMMIT_SHA?.substring(0, 7) || 'unknown';
+  }
+  
   return NextResponse.json({
+    ok: true,
     date: format(today, 'yyyy-MM-dd'),
     updated,
     skipped,
+    errors,
     sourceStatus,
+    wrote,
+    build: buildSha,
     message: updated.length > 0 
       ? `Updated ${updated.length} sources, skipped ${skipped.length}`
       : 'All sources unavailable, using DB data'

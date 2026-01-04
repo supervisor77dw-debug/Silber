@@ -1,47 +1,65 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { execSync } from 'child_process';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const diagnostics: any = {
-    status: 'ok',
+  let buildSha = 'unknown';
+  try {
+    buildSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    buildSha = process.env.VERCEL_GIT_COMMIT_SHA?.substring(0, 7) || 'unknown';
+  }
+
+  const health: any = {
+    build: buildSha,
     timestamp: new Date().toISOString(),
     env: {
-      hasDatabaseUrl: !!process.env.DATABASE_URL,
-      hasDirectUrl: !!process.env.DIRECT_URL,
       hasCronSecret: !!process.env.CRON_SECRET,
       nodeEnv: process.env.NODE_ENV,
-      databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
+      vercelEnv: process.env.VERCEL_ENV || 'local',
     },
-    database: {
-      connected: false,
-      tables: [],
+    db: {
+      canConnect: false,
       error: null,
-    }
+    },
+    counts: {
+      metal_prices: 0,
+      retail_prices: 0,
+    },
+    lastRetail: null,
   };
 
-  // Test 1: Raw query to check table existence
   try {
-    const tables = await prisma.$queryRaw<Array<{tablename: string}>>`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-    `;
-    diagnostics.database.connected = true;
-    diagnostics.database.tables = tables.map(t => t.tablename);
+    // Test connection
+    await prisma.$queryRaw`SELECT 1`;
+    health.db.canConnect = true;
+
+    // Counts
+    health.counts.metal_prices = await prisma.metalPrice.count();
+    health.counts.retail_prices = await prisma.retailPrice.count();
+
+    // Last retail entry
+    const lastRetail = await prisma.retailPrice.findFirst({
+      orderBy: { fetchedAt: 'desc' },
+    });
+    
+    if (lastRetail) {
+      health.lastRetail = {
+        date: lastRetail.date.toISOString().split('T')[0],
+        provider: lastRetail.provider,
+        product: lastRetail.product,
+        priceEur: lastRetail.priceEur,
+        fetchedAt: lastRetail.fetchedAt.toISOString(),
+      };
+    }
   } catch (error) {
-    diagnostics.database.error = error instanceof Error ? error.message : String(error);
-    diagnostics.status = 'error';
+    health.db.canConnect = false;
+    health.db.error = error instanceof Error ? error.message : String(error);
   }
 
-  // Test 2: Try querying daily_spreads
-  try {
-    const count = await prisma.dailySpread.count();
-    diagnostics.database.dailySpreadsCount = count;
-  } catch (error) {
-    diagnostics.database.dailySpreadsError = error instanceof Error ? error.message : String(error);
-  }
-
-  return NextResponse.json(diagnostics, {
-    status: diagnostics.status === 'ok' ? 200 : 500
+  return NextResponse.json(health, {
+    status: health.db.canConnect ? 200 : 500,
   });
 }
