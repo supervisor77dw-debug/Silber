@@ -44,6 +44,7 @@ export async function OPTIONS() {
  * - Gibt Status zurück, UI lädt danach aus DB
  */
 export async function POST(req: NextRequest) {
+  console.log('[API HIT]', new Date().toISOString());
   console.log('[REFRESH_START]', new Date().toISOString());
   
   // Bearer Auth REQUIRED
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
         }
       });
       
+      console.log('[DB WRITE]', { table: 'metal_prices', date: format(today, 'yyyy-MM-dd'), value: comexPriceResult.priceUsdPerOz });
       wrote.metal++;
       updated.push('comex_price');
       sourceStatus.comex_price = 'live';

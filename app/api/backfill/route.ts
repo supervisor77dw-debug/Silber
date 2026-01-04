@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { startOfDay, subDays, format, parseISO } from 'date-fns';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
@@ -90,6 +91,8 @@ function parseStooqDate(dateStr: string): Date {
 }
 
 export async function POST(req: NextRequest) {
+  console.log('[API HIT]', new Date().toISOString());
+  
   try {
     // Auth: CRON_SECRET in header
     const authHeader = req.headers.get('authorization');
@@ -192,6 +195,7 @@ export async function POST(req: NextRequest) {
           }
         });
         
+        console.log('[DB WRITE]', { table: 'metal_prices', date: format(date, 'yyyy-MM-dd'), value: close });
         if (existing) {
           updated++;
         } else {
