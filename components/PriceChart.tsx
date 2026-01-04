@@ -19,7 +19,24 @@ export default function PriceChart({ days }: PriceChartProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/spreads?days=${days}`);
+      // Try metal_prices first (backfill data)
+      const metalResponse = await fetch(`/api/metal-prices?days=${days}`, { cache: 'no-store' });
+      if (metalResponse.ok) {
+        const metalData = await metalResponse.json();
+        if (metalData.prices && metalData.prices.length > 0) {
+          const chartData = metalData.prices.map((item: any) => ({
+            date: format(new Date(item.date), 'dd.MM'),
+            silver: item.xagUsdClose,
+            source: item.source,
+          }));
+          setData(chartData);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fallback to spreads API
+      const response = await fetch(`/api/spreads?days=${days}`, { cache: 'no-store' });
       const result = await response.json();
       
       const chartData = result.map((item: any) => ({

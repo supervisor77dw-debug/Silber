@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { startOfDay, subDays } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * Dashboard API - DB-First approach

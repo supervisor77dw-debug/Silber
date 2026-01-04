@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import MetricCard from './MetricCard';
 import SpreadChart from './SpreadChart';
 import StockChart from './StockChart';
 import PriceChart from './PriceChart';
 import DataQuality from './DataQuality';
+import RetailPrices from './RetailPrices';
 import { ToastNotification, useToast } from './ToastNotification';
 import { format } from 'date-fns';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
@@ -24,8 +26,20 @@ interface DashboardData {
   daysSinceUpdate?: number;
 }
 
+interface DbStats {
+  timestamp: string;
+  stats: {
+    metal_prices: { count: number; latest: any };
+    retail_prices: { count: number; latest: any };
+    fx_rates: { count: number; latest: any };
+    sge_prices: { count: number; latest: any };
+  };
+}
+
 export default function Dashboard() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState(30);
@@ -34,12 +48,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData();
+    fetchDbStats();
   }, []);
+
+  const fetchDbStats = async () => {
+    try {
+      const response = await fetch('/api/db-stats', { cache: 'no-store' });
+      if (response.ok) {
+        const stats = await response.json();
+        setDbStats(stats);
+      }
+    } catch (err) {
+      console.warn('DB stats fetch failed:', err);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
       // DB-First: Lade immer aus der Datenbank
-      const response = await fetch('/api/dashboard-v2');
+      const response = await fetch('/api/dashboard-v2', { cache: 'no-store' });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -106,6 +133,10 @@ export default function Dashboard() {
       
       // WICHTIG: Dashboard aus DB neu laden
       await fetchDashboardData();
+      await fetchDbStats();
+      
+      // Force router refresh
+      router.refresh();
       
     } catch (error) {
       console.error('Refresh error:', error);
@@ -184,7 +215,7 @@ export default function Dashboard() {
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
         <div className="mb-8 flex justify-between items-start">
-          <div>
+          <div className="flex-1">
             <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
               Silver Market Analysis
             </h1>
@@ -208,6 +239,55 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          
+          {/* DB Debug Stats */}
+          {dbStats && (
+            <div className="ml-8 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-xs space-y-2 max-w-xs">
+              <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                📊 DB Live Stats
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Metal Prices:</span>
+                  <span className="font-mono text-gray-900 dark:text-white">
+                    {dbStats.stats.metal_prices.count} rows
+                  </span>
+                </div>
+                {dbStats.stats.metal_prices.latest && (
+                  <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
+                    Latest: {dbStats.stats.metal_prices.latest.date} 
+                    {' '}(${dbStats.stats.metal_prices.latest.price?.toFixed(2)})
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Retail Prices:</span>
+                  <span className="font-mono text-gray-900 dark:text-white">
+                    {dbStats.stats.retail_prices.count} rows
+                  </span>
+                </div>
+                {dbStats.stats.retail_prices.latest && (
+                  <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
+                    Latest: {dbStats.stats.retail_prices.latest.provider} - {dbStats.stats.retail_prices.latest.date}
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">FX Rates:</span>
+                  <span className="font-mono text-gray-900 dark:text-white">
+                    {dbStats.stats.fx_rates.count} rows
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">SGE Prices:</span>
+                  <span className="font-mono text-gray-900 dark:text-white">
+                    {dbStats.stats.sge_prices.count} rows
+                  </span>
+                </div>
+                <div className="text-gray-400 dark:text-gray-600 text-[10px] pt-1 border-t border-gray-300 dark:border-gray-700">
+                  {new Date(dbStats.timestamp).toLocaleTimeString('de-DE')}
+                </div>
+              </div>
+            </div>
+          )}
           
           <button
             onClick={handleRefresh}
@@ -277,6 +357,11 @@ export default function Dashboard() {
 
       <div className="mb-8">
         <SpreadChart days={timeRange} />
+      </div>
+
+      {/* Retail Prices Section */}
+      <div className="mb-8">
+        <RetailPrices />
       </div>
 
       {/* Export Button */}

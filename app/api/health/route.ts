@@ -3,20 +3,28 @@ import { prisma } from '@/lib/db';
 import { execSync } from 'child_process';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   let buildSha = 'unknown';
+  let buildTimestamp = 'unknown';
+  
   try {
     buildSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+    buildTimestamp = execSync('git log -1 --format=%cd --date=iso', { encoding: 'utf-8' }).trim();
   } catch {
     buildSha = process.env.VERCEL_GIT_COMMIT_SHA?.substring(0, 7) || 'unknown';
+    buildTimestamp = process.env.VERCEL_GIT_COMMIT_REF || 'unknown';
   }
 
   const health: any = {
     build: buildSha,
+    buildTimestamp,
+    gitCommitMessage: process.env.VERCEL_GIT_COMMIT_MESSAGE || 'N/A',
     timestamp: new Date().toISOString(),
     env: {
       hasCronSecret: !!process.env.CRON_SECRET,
+      hasRefreshToken: !!process.env.NEXT_PUBLIC_REFRESH_TOKEN,
       nodeEnv: process.env.NODE_ENV,
       vercelEnv: process.env.VERCEL_ENV || 'local',
     },
