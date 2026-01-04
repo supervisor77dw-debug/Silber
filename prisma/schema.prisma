@@ -141,6 +141,31 @@ model MetalPrice {
   @@map("metal_prices")
 }
 
+// Retail Prices (Händlerpreise für Premium-Vergleich)
+model RetailPrice {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  
+  provider      String   // "Degussa", "ProAurum", etc.
+  product       String   // "1oz Maple Leaf", "1oz Philharmoniker", etc.
+  
+  priceEur      Float    // Preis in EUR
+  fineOz        Float    @default(1.0)  // Feinunzen (meist 1.0)
+  
+  // Calculated fields
+  impliedUsdOz  Float?   // Umgerechnet in USD/oz
+  premiumPercent Float?  // Premium vs Spot in %
+  
+  // Source tracking
+  source        String   @default("manual")  // "manual", "scraper", "api"
+  sourceUrl     String?
+  
+  fetchedAt     DateTime @default(now()) @db.Timestamptz
+  
+  @@index([date, provider])
+  @@map("retail_prices")
+}
+
 // Calculated Daily Spreads
 model DailySpread {
   id                String   @id @default(cuid())

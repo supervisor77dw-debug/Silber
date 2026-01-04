@@ -9,245 +9,151 @@ import {
   calculateRegisteredPercent,
   calculatePhysicalStressIndex 
 } from '@/lib/calculations';
-import { startOfDay } from 'date-fns';
+import { startOfDay, format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
- * Refresh Endpoint: Manueller Live-Datenabruf
+ * Refresh Endpoint - ARCHITEKTUR-KORREKT
+ * 
+ * Grundregel: Live-APIs schreiben NUR in DB, nie direkt ins UI
  * 
  * POST /api/refresh
  * 
- * Holt aktuelle Live-Daten und schreibt in DB.
- * Gibt detaillierte Ergebnisse zurück (welche Quellen erfolgreich waren).
- * 
- * Fehlerbehandlung: Immer 200 Status, auch bei Teil-Fehlern.
+ * Verhalten:
+ * - Versucht jede Quelle zu fetchen
+ * - Bei Erfolg: upsert in DB
+ * - Bei Fehler: skip (kein throw!)
+ * - Gibt Status zurück, UI lädt danach aus DB
  */
-
-interface RefreshAttempt {
-  source: string;
-  status: 'success' | 'failed' | 'unavailable';
-  timestamp: string;
-  message?: string;
-  error?: string;
-  value?: any;
-}
-
 export async function POST(req: NextRequest) {
-  const attempts: RefreshAttempt[] = [];
   const today = startOfDay(new Date());
+  const updated: string[] = [];
+  const skipped: string[] = [];
+  const sourceStatus: Record<string, 'live' | 'db' | 'unavailable'> = {};
   
+  // 1) COMEX Stocks
   try {
-    // 1) COMEX Stocks
-    let comexStocks: any = null;
-    try {
-      comexStocks = await fetchComexStocks();
-      
-      if (comexStocks) {
-        await prisma.comexStock.upsert({
-          where: { date: today },
-          create: {
-            date: today,
-            totalRegistered: comexStocks.totalRegistered,
-            totalEligible: comexStocks.totalEligible,
-            totalCombined: comexStocks.totalCombined,
-            registeredPercent: comexStocks.registeredPercent,
-            deltaRegistered: comexStocks.deltaRegistered,
-            deltaEligible: comexStocks.deltaEligible,
-            deltaCombined: comexStocks.deltaCombined,
-            sourceUrl: comexStocks.sourceUrl,
-            isValidated: true
-          },
-          update: {
-            totalRegistered: comexStocks.totalRegistered,
-            totalEligible: comexStocks.totalEligible,
-            totalCombined: comexStocks.totalCombined,
-            registeredPercent: comexStocks.registeredPercent,
-            deltaRegistered: comexStocks.deltaRegistered,
-            deltaEligible: comexStocks.deltaEligible,
-            deltaCombined: comexStocks.deltaCombined,
-            sourceUrl: comexStocks.sourceUrl,
-            fetchedAt: new Date()
-          }
-        });
-        
-        attempts.push({
-          source: 'COMEX Stocks',
-          status: 'success',
-          timestamp: new Date().toISOString(),
-          message: `${(comexStocks.totalRegistered / 1_000_000).toFixed(1)}M oz registered`,
-          value: comexStocks
-        });
-      } else {
-        throw new Error('fetchComexStocks returned null');
-      }
-    } catch (err: any) {
-      console.error('[Refresh] COMEX Stocks failed:', err.message);
-      
-      // Fallback: Letzten DB-Wert laden
-      const lastStock = await prisma.comexStock.findFirst({
-        orderBy: { date: 'desc' }
+    const comexData = await fetchComexStocks();
+    
+    if (comexData) {
+      await prisma.comexStock.upsert({
+        where: { date: today },
+        create: {
+          date: today,
+          totalRegistered: comexData.totalRegistered,
+          totalEligible: comexData.totalEligible,
+          totalCombined: comexData.totalCombined,
+          registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
+          isValidated: true
+        },
+        update: {
+          totalRegistered: comexData.totalRegistered,
+          totalEligible: comexData.totalEligible,
+          totalCombined: comexData.totalCombined,
+          registeredPercent: calculateRegisteredPercent(comexData.totalRegistered, comexData.totalCombined),
+          fetchedAt: new Date()
+        }
       });
       
-      if (lastStock) {
-        comexStocks = {
-          totalRegistered: lastStock.totalRegistered,
-          totalEligible: lastStock.totalEligible,
-          totalCombined: lastStock.totalCombined,
-          registeredPercent: lastStock.registeredPercent
-        };
-        
-        attempts.push({
-          source: 'COMEX Stocks',
-          status: 'unavailable',
-          timestamp: new Date().toISOString(),
-          message: `Live nicht verfügbar - nutze DB-Wert vom ${lastStock.date.toISOString().split('T')[0]}`,
-          error: err.message,
-          value: comexStocks
-        });
-      } else {
-        attempts.push({
-          source: 'COMEX Stocks',
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          error: err.message,
-          message: 'Keine Live-Daten und keine DB-Historie verfügbar'
-        });
-      }
+      updated.push('comex');
+      sourceStatus.comex = 'live';
     }
+  } catch (err) {
+    console.warn('[Refresh] COMEX skip:', err instanceof Error ? err.message : String(err));
+    skipped.push('comex');
+    sourceStatus.comex = 'db';
+  }
+  
+  // 2) FX Rate
+  try {
+    const fxResult = await fetchFxRateWithRetry(today);
     
-    // 2) FX Rate (USD/CNY)
+    if (fxResult && fxResult.usdCnyRate > 0) {
+      await prisma.fxRate.upsert({
+        where: { date: today },
+        create: {
+          date: today,
+          usdCnyRate: fxResult.usdCnyRate,
+          source: 'ECB'
+        },
+        update: {
+          usdCnyRate: fxResult.usdCnyRate,
+          fetchedAt: new Date()
+        }
+      });
+      
+      updated.push('fx');
+      sourceStatus.fx = 'live';
+    }
+  } catch (err) {
+    console.warn('[Refresh] FX skip:', err instanceof Error ? err.message : String(err));
+    skipped.push('fx');
+    sourceStatus.fx = 'db';
+  }
+  
+  // 3) COMEX Price
+  try {
+    const comexPriceResult = await fetchComexSpotPriceWithRetry(today);
+    
+    if (comexPriceResult && comexPriceResult.priceUsdPerOz > 0) {
+      await prisma.comexPrice.upsert({
+        where: { marketDate: today },
+        create: {
+          marketDate: today,
+          priceUsdPerOz: comexPriceResult.priceUsdPerOz,
+          contract: comexPriceResult.contract || 'Spot',
+          sourceName: 'metals-api'
+        },
+        update: {
+          priceUsdPerOz: comexPriceResult.priceUsdPerOz,
+          fetchedAt: new Date()
+        }
+      });
+      
+      // Also store in metal_prices for historical charts
+      await prisma.metalPrice.upsert({
+        where: { date: today },
+        create: {
+          date: today,
+          xagUsdClose: comexPriceResult.priceUsdPerOz,
+          source: 'live-api'
+        },
+        update: {
+          xagUsdClose: comexPriceResult.priceUsdPerOz,
+          fetchedAt: new Date()
+        }
+      });
+      
+      updated.push('comex_price');
+      sourceStatus.comex_price = 'live';
+    }
+  } catch (err) {
+    console.warn('[Refresh] COMEX Price skip:', err instanceof Error ? err.message : String(err));
+    skipped.push('comex_price');
+    sourceStatus.comex_price = 'db';
+  }
+  
+  // 4) SGE Price (needs FX)
+  try {
+    // Get FX rate (live or latest from DB)
     let fxRate: number | null = null;
-    try {
-      const fxResult = await fetchFxRateWithRetry(today);
-      
-      if (fxResult && fxResult.usdCnyRate > 0) {
-        fxRate = fxResult.usdCnyRate;
-        
-        await prisma.fxRate.upsert({
-          where: { date: today },
-          create: {
-            date: today,
-            usdCnyRate: fxRate,
-            source: 'ECB'
-          },
-          update: {
-            usdCnyRate: fxRate,
-            fetchedAt: new Date()
-          }
-        });
-        
-        attempts.push({
-          source: 'FX Rate',
-          status: 'success',
-          timestamp: new Date().toISOString(),
-          message: `USD/CNY: ${fxRate.toFixed(4)}`,
-          value: fxRate
-        });
-      } else {
-        throw new Error('FX rate invalid or zero');
-      }
-    } catch (err: any) {
-      console.error('[Refresh] FX Rate failed:', err.message);
-      
-      const lastFx = await prisma.fxRate.findFirst({
-        orderBy: { date: 'desc' }
-      });
-      
-      if (lastFx) {
-        fxRate = lastFx.usdCnyRate;
-        attempts.push({
-          source: 'FX Rate',
-          status: 'unavailable',
-          timestamp: new Date().toISOString(),
-          message: `Live nicht verfügbar - nutze DB-Wert vom ${lastFx.date.toISOString().split('T')[0]}: ${fxRate.toFixed(4)}`,
-          error: err.message,
-          value: fxRate
-        });
-      } else {
-        attempts.push({
-          source: 'FX Rate',
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          error: err.message,
-          message: 'Keine Live-Daten und keine DB-Historie verfügbar'
-        });
-      }
-    }
+    const latestFx = await prisma.fxRate.findFirst({
+      orderBy: { date: 'desc' }
+    });
     
-    // 3) COMEX Price
-    let comexPrice: number | null = null;
-    try {
-      const comexResult = await fetchComexSpotPriceWithRetry(today);
+    if (latestFx) {
+      fxRate = latestFx.usdCnyRate;
       
-      if (comexResult && comexResult.priceUsdPerOz > 0) {
-        comexPrice = comexResult.priceUsdPerOz;
-        
-        await prisma.comexPrice.upsert({
-          where: { marketDate: today },
-          create: {
-            marketDate: today,
-            priceUsdPerOz: comexPrice,
-            contract: comexResult.contract || 'Spot',
-            sourceName: 'metals-api'
-          },
-          update: {
-            priceUsdPerOz: comexPrice,
-            fetchedAt: new Date()
-          }
-        });
-        
-        attempts.push({
-          source: 'COMEX Price',
-          status: 'success',
-          timestamp: new Date().toISOString(),
-          message: `${comexPrice.toFixed(2)} USD/oz`,
-          value: comexPrice
-        });
-      } else {
-        throw new Error('COMEX price invalid or zero');
-      }
-    } catch (err: any) {
-      console.error('[Refresh] COMEX Price failed:', err.message);
-      
-      const lastPrice = await prisma.comexPrice.findFirst({
+      // Get COMEX price for SGE estimation fallback
+      const latestComexPrice = await prisma.comexPrice.findFirst({
         orderBy: { marketDate: 'desc' }
       });
       
-      if (lastPrice) {
-        comexPrice = lastPrice.priceUsdPerOz;
-        attempts.push({
-          source: 'COMEX Price',
-          status: 'unavailable',
-          timestamp: new Date().toISOString(),
-          message: `Live nicht verfügbar - nutze DB-Wert vom ${lastPrice.marketDate.toISOString().split('T')[0]}: ${comexPrice.toFixed(2)} USD/oz`,
-          error: err.message,
-          value: comexPrice
-        });
-      } else {
-        attempts.push({
-          source: 'COMEX Price',
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          error: err.message,
-          message: 'Keine Live-Daten und keine DB-Historie verfügbar'
-        });
-      }
-    }
-    
-    // 4) SGE Price (benötigt FX Rate)
-    let sgePrice: number | null = null;
-    try {
-      if (!fxRate) {
-        throw new Error('FX Rate nicht verfügbar - SGE Preis kann nicht berechnet werden');
-      }
-      
-      const sgeResult = await fetchSgePrice(today, fxRate, comexPrice);
+      const sgeResult = await fetchSgePrice(today, fxRate, latestComexPrice?.priceUsdPerOz);
       
       if (sgeResult && sgeResult.priceUsdPerOz > 0) {
-        sgePrice = sgeResult.priceUsdPerOz;
-        
         await prisma.sgePrice.upsert({
           where: { date: today },
           create: {
@@ -262,164 +168,96 @@ export async function POST(req: NextRequest) {
             priceCnyPerGram: sgeResult.priceCnyPerGram,
             priceUsdPerOz: sgeResult.priceUsdPerOz,
             fxRateUsed: fxRate,
-            sourceUrl: 'multi-provider',
             fetchedAt: new Date()
           }
         });
         
-        attempts.push({
-          source: 'SGE Price',
-          status: 'success',
-          timestamp: new Date().toISOString(),
-          message: `${sgePrice.toFixed(2)} USD/oz (multi-provider)`,
-          value: sgePrice
-        });
-      } else {
-        throw new Error('SGE price invalid or zero');
-      }
-    } catch (err: any) {
-      console.error('[Refresh] SGE Price failed:', err.message);
-      
-      const lastSge = await prisma.sgePrice.findFirst({
-        orderBy: { date: 'desc' }
-      });
-      
-      if (lastSge) {
-        sgePrice = lastSge.priceUsdPerOz;
-        attempts.push({
-          source: 'SGE Price',
-          status: 'unavailable',
-          timestamp: new Date().toISOString(),
-          message: `Live nicht verfügbar - nutze DB-Wert vom ${lastSge.date.toISOString().split('T')[0]}: ${sgePrice.toFixed(2)} USD/oz`,
-          error: err.message,
-          value: sgePrice
-        });
-      } else {
-        attempts.push({
-          source: 'SGE Price',
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          error: err.message,
-          message: 'Keine Live-Daten und keine DB-Historie verfügbar'
-        });
-      }
-    }
-    
-    // 5) Spread berechnen und speichern
-    let spreadCalculated = false;
-    if (sgePrice && comexPrice && comexStocks) {
-      try {
-        const spreadResult = calculateSpread(sgePrice, comexPrice);
-        const registeredPercent = calculateRegisteredPercent(comexStocks.totalRegistered, comexStocks.totalCombined);
-        const psiResult = calculatePhysicalStressIndex({
-          spreadUsdPerOz: spreadResult.spreadUsdPerOz,
-          totalRegistered: comexStocks.totalRegistered,
-          totalCombined: comexStocks.totalCombined
-        });
-        
-        await prisma.dailySpread.upsert({
-          where: { date: today },
-          create: {
-            date: today,
-            sgeUsdPerOz: sgePrice,
-            comexUsdPerOz: comexPrice,
-            spreadUsdPerOz: spreadResult.spreadUsdPerOz,
-            spreadPercent: spreadResult.spreadPercent,
-            registered: comexStocks.totalRegistered,
-            eligible: comexStocks.totalEligible,
-            total: comexStocks.totalCombined,
-            registeredPercent: registeredPercent,
-            psi: psiResult.psi,
-            psiStressLevel: psiResult.stressLevel,
-            dataQuality: 'OK'
-          },
-          update: {
-            sgeUsdPerOz: sgePrice,
-            comexUsdPerOz: comexPrice,
-            spreadUsdPerOz: spreadResult.spreadUsdPerOz,
-            spreadPercent: spreadResult.spreadPercent,
-            registered: comexStocks.totalRegistered,
-            eligible: comexStocks.totalEligible,
-            total: comexStocks.totalCombined,
-            registeredPercent: registeredPercent,
-            psi: psiResult.psi,
-            psiStressLevel: psiResult.stressLevel
-          }
-        });
-        
-        spreadCalculated = true;
-        
-        attempts.push({
-          source: 'Spread Calculation',
-          status: 'success',
-          timestamp: new Date().toISOString(),
-          message: `Spread: ${spreadResult.spreadUsdPerOz.toFixed(2)} USD/oz (${spreadResult.spreadPercent.toFixed(2)}%), PSI: ${psiResult.psi ? psiResult.psi.toFixed(2) : 'N/A'} (${psiResult.stressLevel})`,
-          value: { ...spreadResult, ...psiResult }
-        });
-      } catch (err: any) {
-        console.error('[Refresh] Spread calculation failed:', err.message);
-        attempts.push({
-          source: 'Spread Calculation',
-          status: 'failed',
-          timestamp: new Date().toISOString(),
-          error: err.message
-        });
+        updated.push('sge');
+        sourceStatus.sge = 'live';
       }
     } else {
-      attempts.push({
-        source: 'Spread Calculation',
-        status: 'failed',
-        timestamp: new Date().toISOString(),
-        message: 'Nicht alle erforderlichen Daten verfügbar (SGE, COMEX Price, COMEX Stocks)'
-      });
+      throw new Error('No FX rate available (neither live nor DB)');
     }
-    
-    // 6) Summary
-    const successful = attempts.filter(a => a.status === 'success').length;
-    const unavailable = attempts.filter(a => a.status === 'unavailable').length;
-    const failed = attempts.filter(a => a.status === 'failed').length;
-    
-    const hasErrors = failed > 0;
-    const partialSuccess = successful > 0 && (unavailable > 0 || failed > 0);
-    
-    return NextResponse.json({
-      success: successful > 0,
-      timestamp: new Date().toISOString(),
-      summary: {
-        successful,
-        unavailable,
-        failed,
-        total: attempts.length,
-        spreadCalculated,
-        hasErrors,
-        partialSuccess
-      },
-      attempts,
-      message: partialSuccess 
-        ? `Teilweise erfolgreich: ${successful} live, ${unavailable} aus DB, ${failed} fehlgeschlagen`
-        : successful > 0
-        ? `Erfolgreich: Alle ${successful} Datenquellen aktualisiert`
-        : 'Fehler: Keine Datenquellen verfügbar'
-    });
-    
-  } catch (error: any) {
-    console.error('[Refresh] Unerwarteter Fehler:', error);
-    
-    return NextResponse.json({
-      success: false,
-      timestamp: new Date().toISOString(),
-      summary: {
-        successful: 0,
-        unavailable: 0,
-        failed: attempts.length,
-        total: attempts.length,
-        spreadCalculated: false,
-        hasErrors: true,
-        partialSuccess: false
-      },
-      attempts,
-      error: error.message,
-      message: 'Refresh fehlgeschlagen'
-    });
+  } catch (err) {
+    console.warn('[Refresh] SGE skip:', err instanceof Error ? err.message : String(err));
+    skipped.push('sge');
+    sourceStatus.sge = 'db';
   }
+  
+  // 5) Calculate spread if we have all data
+  try {
+    const latestComexPrice = await prisma.comexPrice.findFirst({
+      where: { marketDate: today },
+      orderBy: { marketDate: 'desc' }
+    });
+    
+    const latestSgePrice = await prisma.sgePrice.findFirst({
+      where: { date: today },
+      orderBy: { date: 'desc' }
+    });
+    
+    const latestComexStock = await prisma.comexStock.findFirst({
+      where: { date: today },
+      orderBy: { date: 'desc' }
+    });
+    
+    if (latestComexPrice && latestSgePrice && latestComexStock) {
+      const spreadResult = calculateSpread(
+        latestSgePrice.priceUsdPerOz,
+        latestComexPrice.priceUsdPerOz
+      );
+      
+      const psiResult = calculatePhysicalStressIndex({
+        spreadUsdPerOz: spreadResult.spreadUsdPerOz,
+        totalRegistered: latestComexStock.totalRegistered,
+        totalCombined: latestComexStock.totalCombined
+      });
+      
+      await prisma.dailySpread.upsert({
+        where: { date: today },
+        create: {
+          date: today,
+          sgeUsdPerOz: latestSgePrice.priceUsdPerOz,
+          comexUsdPerOz: latestComexPrice.priceUsdPerOz,
+          spreadUsdPerOz: spreadResult.spreadUsdPerOz,
+          spreadPercent: spreadResult.spreadPercent,
+          registered: latestComexStock.totalRegistered,
+          eligible: latestComexStock.totalEligible,
+          total: latestComexStock.totalCombined,
+          registeredPercent: psiResult.registeredPercent,
+          psi: psiResult.psi,
+          psiStressLevel: psiResult.stressLevel,
+          dataQuality: 'OK'
+        },
+        update: {
+          sgeUsdPerOz: latestSgePrice.priceUsdPerOz,
+          comexUsdPerOz: latestComexPrice.priceUsdPerOz,
+          spreadUsdPerOz: spreadResult.spreadUsdPerOz,
+          spreadPercent: spreadResult.spreadPercent,
+          registered: latestComexStock.totalRegistered,
+          eligible: latestComexStock.totalEligible,
+          total: latestComexStock.totalCombined,
+          registeredPercent: psiResult.registeredPercent,
+          psi: psiResult.psi,
+          psiStressLevel: psiResult.stressLevel
+        }
+      });
+      
+      updated.push('spread');
+    }
+  } catch (err) {
+    console.warn('[Refresh] Spread calculation skip:', err instanceof Error ? err.message : String(err));
+    skipped.push('spread');
+  }
+  
+  // Response: Status only, NO data
+  return NextResponse.json({
+    date: format(today, 'yyyy-MM-dd'),
+    updated,
+    skipped,
+    sourceStatus,
+    message: updated.length > 0 
+      ? `Updated ${updated.length} sources, skipped ${skipped.length}`
+      : 'All sources unavailable, using DB data'
+  });
 }

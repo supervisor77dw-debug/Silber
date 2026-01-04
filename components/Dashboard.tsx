@@ -71,42 +71,41 @@ export default function Dashboard() {
     
     try {
       const response = await fetch('/api/refresh', { method: 'POST' });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const result = await response.json();
       
-      if (response.ok && result.success) {
-        // Erfolg
-        const { successful, unavailable, failed } = result.summary;
-        
-        if (unavailable === 0 && failed === 0) {
-          toast.success(
-            'Alle Datenquellen erfolgreich aktualisiert',
-            `${successful} Quellen live abgerufen`
-          );
-        } else if (successful > 0) {
-          toast.warning(
-            `Teilweise erfolgreich: ${successful} live, ${unavailable} aus DB, ${failed} fehlgeschlagen`,
-            'Zeige verfügbare Daten'
-          );
-        } else {
-          toast.error(
-            'Keine Live-Daten verfügbar',
-            'Zeige letzte gespeicherte Werte aus der Datenbank'
-          );
-        }
-        
-        // Dashboard-Daten neu laden (aus DB)
-        await fetchDashboardData();
+      // Status anzeigen
+      const { updated, skipped, sourceStatus } = result;
+      
+      if (updated.length > 0 && skipped.length === 0) {
+        toast.success(
+          'Alle Datenquellen erfolgreich aktualisiert',
+          `${updated.length} Quellen live abgerufen`
+        );
+      } else if (updated.length > 0) {
+        toast.warning(
+          `${updated.length} Quellen aktualisiert, ${skipped.length} nicht verfügbar`,
+          'Nutze DB-Daten für fehlende Quellen'
+        );
       } else {
-        toast.error(
-          'Aktualisierung fehlgeschlagen',
-          result.message || result.error || 'Zeige letzte gespeicherte Werte'
+        toast.info(
+          'Live-Daten heute nicht verfügbar',
+          'Zeige letzte gespeicherte DB-Werte'
         );
       }
+      
+      // WICHTIG: Dashboard aus DB neu laden
+      await fetchDashboardData();
+      
     } catch (error) {
       console.error('Refresh error:', error);
       toast.error(
-        'Netzwerkfehler',
-        'Konnte keine Verbindung zum Server herstellen'
+        'Verbindungsfehler',
+        'Konnte Server nicht erreichen'
       );
     } finally {
       setRefreshing(false);
@@ -125,25 +124,17 @@ export default function Dashboard() {
     return (
       <>
         <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center max-w-2xl p-8">
-            <h2 className="text-2xl font-bold mb-4 text-red-600">Fehler beim Laden der Daten</h2>
-            <p className="text-gray-700 dark:text-gray-300 mb-6 font-mono text-sm bg-gray-100 dark:bg-gray-800 p-4 rounded">
-              {error}
+        <div className="container mx-auto px-4 py-8 max-w-7xl">
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+            <h2 className="text-lg font-semibold mb-2 text-yellow-900 dark:text-yellow-100">
+              Verbindungsproblem
+            </h2>
+            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-4">
+              Konnte keine Verbindung zur Datenbank herstellen.
             </p>
-            <div className="space-y-3 text-left text-sm text-gray-600 dark:text-gray-400">
-              <p><strong>Mögliche Ursachen:</strong></p>
-              <ul className="list-disc list-inside space-y-1 ml-4">
-                <li>Datenbank ist nicht konfiguriert (DATABASE_URL, DIRECT_URL)</li>
-                <li>Datenbank-Migrationen wurden nicht ausgeführt</li>
-                <li>Verbindung zur Datenbank fehlgeschlagen</li>
-                <li>Keine Daten vorhanden (erster Abruf erforderlich)</li>
-              </ul>
-              <p className="mt-4"><strong>Siehe DEPLOYMENT.md für Details</strong></p>
-            </div>
             <button
               onClick={fetchDashboardData}
-              className="mt-6 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
             >
               Erneut versuchen
             </button>
@@ -157,30 +148,21 @@ export default function Dashboard() {
     return (
       <>
         <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center max-w-xl p-8">
-            <h2 className="text-2xl font-bold mb-4">Keine Daten verfügbar</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Die Datenbank ist leer. Bitte führen Sie den ersten Datenabruf durch.
+        <div className="container mx-auto px-4 py-8 max-w-7xl">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+            <h2 className="text-lg font-semibold mb-2 text-blue-900 dark:text-blue-100">
+              Keine Daten verfügbar
+            </h2>
+            <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+              Die Datenbank ist leer. Führen Sie einen Datenabruf durch.
             </p>
-            <div className="space-y-3">
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {refreshing ? 'Datenabruf läuft...' : 'Ersten Datenabruf durchführen'}
-              </button>
-              <div className="mt-4">
-                <a 
-                  href="/api/health-v2" 
-                  target="_blank"
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  → Datenbank-Status prüfen
-                </a>
-              </div>
-            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {refreshing ? 'Lädt...' : 'Daten abrufen'}
+            </button>
           </div>
         </div>
       </>

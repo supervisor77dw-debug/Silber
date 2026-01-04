@@ -1,25 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { startOfDay, subDays, format } from 'date-fns';
+import { startOfDay, subDays, format, parseISO } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
- * Backfill Endpoint: Holt historische Silberpreise von Stooq
+ * Backfill Endpoint - ARCHITEKTUR-KORREKT
  * 
- * Protected: Benötigt CRON_SECRET
+ * POST /api/backfill
+ * Body: {
+ *   from: "2024-01-01",
+ *   to: "2025-12-31",
+ *   source: "stooq"  // optional, default: "stooq"
+ * }
  * 
- * GET /api/admin/backfill?token=xxx&months=1
- * GET /api/admin/backfill?token=xxx&from=2025-12-01&to=2025-12-31
+ * Auth: Requires CRON_SECRET header
+ * 
+ * Verhalten:
+ * - Nutzt NUR öffentliche CSV-Daten (Stooq)
+ * - Upsert in metal_prices (unique: date)
+ * - Kein UI-Block
+ * - Gibt Summary zurück
  */
 
 interface StooqRow {
-  Date: string;      // YYYYMMDD oder YYYY-MM-DD
+  Date: string;
   Open?: string;
   High?: string;
   Low?: string;
-  Close: string;     // Required
+  Close: string;
   Volume?: string;
 }
 
@@ -33,7 +43,7 @@ async function fetchStooqCsv(symbol: string): Promise<string> {
   });
   
   if (!response.ok) {
-    throw new Error(`Stooq fetch failed: ${response.status} ${response.statusText}`);
+    throw new Error(`Stooq fetch failed: ${response.status}`);
   }
   
   return response.text();
@@ -43,31 +53,23 @@ function parseStooqCsv(csv: string): StooqRow[] {
   const lines = csv.trim().split('\n');
   
   if (lines.length < 2) {
-    throw new Error('CSV hat keine Daten (nur Header oder leer)');
+    throw new Error('CSV empty or header-only');
   }
   
-  // Header: Date,Open,High,Low,Close,Volume
   const header = lines[0].split(',');
   const rows: StooqRow[] = [];
   
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',');
     
-    if (values.length !== header.length) {
-      console.warn(`Zeile ${i} hat ${values.length} Werte, erwartet ${header.length}. Überspringe.`);
-      continue;
-    }
+    if (values.length !== header.length) continue;
     
     const row: any = {};
     header.forEach((col, idx) => {
       row[col] = values[idx];
     });
     
-    // Close ist Pflicht
-    if (!row.Close || row.Close === '' || isNaN(parseFloat(row.Close))) {
-      console.warn(`Zeile ${i} hat keinen gültigen Close-Wert: ${row.Close}. Überspringe.`);
-      continue;
-    }
+    if (!row.Close || isNaN(parseFloat(row.Close))) continue;
     
     rows.push(row as StooqRow);
   }
@@ -76,12 +78,10 @@ function parseStooqCsv(csv: string): StooqRow[] {
 }
 
 function parseStooqDate(dateStr: string): Date {
-  // Stooq nutzt YYYYMMDD (z.B. "20251215") oder YYYY-MM-DD
   if (dateStr.includes('-')) {
-    // YYYY-MM-DD
-    return startOfDay(new Date(dateStr));
+    return startOfDay(parseISO(dateStr));
   } else {
-    // YYYYMMDD
+    // YYYYMMDD format
     const year = parseInt(dateStr.substring(0, 4), 10);
     const month = parseInt(dateStr.substring(4, 6), 10);
     const day = parseInt(dateStr.substring(6, 8), 10);
@@ -89,63 +89,54 @@ function parseStooqDate(dateStr: string): Date {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    // Auth: CRON_SECRET
-    const token = req.nextUrl.searchParams.get('token');
+    // Auth: CRON_SECRET in header
+    const authHeader = req.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
     
     if (!cronSecret) {
       return NextResponse.json({ 
-        error: 'CRON_SECRET nicht konfiguriert' 
+        error: 'CRON_SECRET not configured' 
       }, { status: 500 });
     }
     
-    if (token !== cronSecret) {
+    if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ 
-        error: 'Unauthorized: Falsches Token' 
+        error: 'Unauthorized' 
       }, { status: 401 });
     }
     
-    // Date range bestimmen
-    let startDate: Date;
-    let endDate: Date = startOfDay(new Date());
+    // Parse body
+    const body = await req.json();
+    const { from, to, source = 'stooq' } = body;
     
-    const fromParam = req.nextUrl.searchParams.get('from');
-    const toParam = req.nextUrl.searchParams.get('to');
-    const monthsParam = req.nextUrl.searchParams.get('months');
-    
-    if (fromParam && toParam) {
-      // Expliziter Zeitraum
-      startDate = startOfDay(new Date(fromParam));
-      endDate = startOfDay(new Date(toParam));
-    } else if (monthsParam) {
-      // X Monate zurück
-      const months = parseInt(monthsParam, 10);
-      startDate = subDays(endDate, months * 30);
-    } else {
-      // Default: Dezember 2025
-      startDate = new Date('2025-12-01');
-      endDate = new Date('2025-12-31');
+    if (!from || !to) {
+      return NextResponse.json({
+        error: 'Missing required fields: from, to'
+      }, { status: 400 });
     }
     
-    console.log(`[Backfill] Zeitraum: ${format(startDate, 'yyyy-MM-dd')} bis ${format(endDate, 'yyyy-MM-dd')}`);
+    const startDate = startOfDay(parseISO(from));
+    const endDate = startOfDay(parseISO(to));
     
-    // 1) Stooq CSV holen
+    console.log(`[Backfill] ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
+    
+    // Fetch Stooq CSV
     const csvData = await fetchStooqCsv('xagusd');
     const rows = parseStooqCsv(csvData);
     
-    console.log(`[Backfill] ${rows.length} Zeilen aus Stooq CSV gelesen`);
+    console.log(`[Backfill] Parsed ${rows.length} rows from CSV`);
     
-    // 2) Filtern nach Zeitraum
+    // Filter by date range
     const filteredRows = rows.filter(row => {
       const date = parseStooqDate(row.Date);
       return date >= startDate && date <= endDate;
     });
     
-    console.log(`[Backfill] ${filteredRows.length} Zeilen im Zeitraum ${format(startDate, 'yyyy-MM-dd')} - ${format(endDate, 'yyyy-MM-dd')}`);
+    console.log(`[Backfill] ${filteredRows.length} rows in range`);
     
-    // 3) DB Upsert
+    // Upsert into DB
     let inserted = 0;
     let updated = 0;
     let errors = 0;
@@ -159,9 +150,9 @@ export async function GET(req: NextRequest) {
         const low = row.Low ? parseFloat(row.Low) : null;
         const volume = row.Volume ? parseFloat(row.Volume) : null;
         
-        // Validierung: Preis muss plausibel sein (10-200 USD/oz)
+        // Validation: 10-200 USD/oz
         if (close < 10 || close > 200) {
-          console.warn(`[Backfill] Unplausibler Preis für ${row.Date}: ${close} USD/oz. Überspringe.`);
+          console.warn(`[Backfill] Invalid price ${close} for ${row.Date}, skip`);
           errors++;
           continue;
         }
@@ -179,7 +170,7 @@ export async function GET(req: NextRequest) {
             xagUsdHigh: high,
             xagUsdLow: low,
             volume,
-            source: 'stooq',
+            source,
             sourceUrl: 'https://stooq.com/q/d/l/?s=xagusd&i=d'
           },
           update: {
@@ -188,8 +179,7 @@ export async function GET(req: NextRequest) {
             xagUsdHigh: high,
             xagUsdLow: low,
             volume,
-            source: 'stooq',
-            sourceUrl: 'https://stooq.com/q/d/l/?s=xagusd&i=d',
+            source,
             fetchedAt: new Date()
           }
         });
@@ -201,12 +191,12 @@ export async function GET(req: NextRequest) {
         }
         
       } catch (err: any) {
-        console.error(`[Backfill] Fehler bei ${row.Date}:`, err.message);
+        console.error(`[Backfill] Error at ${row.Date}:`, err.message);
         errors++;
       }
     }
     
-    console.log(`[Backfill] Fertig: ${inserted} inserted, ${updated} updated, ${errors} errors`);
+    console.log(`[Backfill] Done: ${inserted} inserted, ${updated} updated, ${errors} errors`);
     
     return NextResponse.json({
       success: true,
@@ -221,16 +211,15 @@ export async function GET(req: NextRequest) {
         updated,
         errors
       },
-      message: `Backfill abgeschlossen: ${inserted} neu, ${updated} aktualisiert, ${errors} Fehler`
+      message: `Backfill complete: ${inserted} new, ${updated} updated, ${errors} errors`
     });
     
   } catch (error: any) {
-    console.error('[Backfill] Fehler:', error);
+    console.error('[Backfill] Error:', error);
     
     return NextResponse.json({
       success: false,
-      error: error.message,
-      message: 'Backfill fehlgeschlagen'
+      error: error.message
     }, { status: 500 });
   }
 }
