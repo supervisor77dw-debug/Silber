@@ -127,11 +127,21 @@ export async function POST(req: NextRequest) {
     sourceStatus.fx = 'db';
   }
   
-  // 3) COMEX Price
+  // 3) COMEX Price (Best Effort, 8s timeout)
   try {
-    const comexPriceResult = await fetchComexSpotPriceWithRetry(today);
+    console.log('[FETCH_COMEX_PRICE_START]');
+    
+    const timeoutPromise = new Promise<null>((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout after 8s')), 8000)
+    );
+    
+    const comexPriceResult = await Promise.race([
+      fetchComexSpotPriceWithRetry(today),
+      timeoutPromise
+    ]);
     
     if (comexPriceResult && comexPriceResult.priceUsdPerOz > 0) {
+      // Write to comex_prices table
       await prisma.comexPrice.upsert({
         where: { marketDate: today },
         create: {
@@ -146,7 +156,7 @@ export async function POST(req: NextRequest) {
         }
       });
       
-      // Also store in metal_prices for historical charts
+      // ALWAYS write to metal_prices for charts (decoupled)
       await prisma.metalPrice.upsert({
         where: { date: today },
         create: {
@@ -160,12 +170,19 @@ export async function POST(req: NextRequest) {
         }
       });
       
+      wrote.metal++;
       updated.push('comex_price');
       sourceStatus.comex_price = 'live';
+      console.log('[FETCH_COMEX_PRICE_OK]', comexPriceResult.priceUsdPerOz);
+    } else {
+      console.warn('[FETCH_COMEX_PRICE_NO_DATA]');
+      errors.push('comex_price: No data returned');
+      sourceStatus.comex_price = 'db';
     }
   } catch (err) {
-    console.warn('[Refresh] COMEX Price skip:', err instanceof Error ? err.message : String(err));
-    skipped.push('comex_price');
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[FETCH_COMEX_PRICE_FAIL]', msg);
+    errors.push(`comex_price: ${msg}`);
     sourceStatus.comex_price = 'db';
   }
   

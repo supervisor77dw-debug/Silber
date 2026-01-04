@@ -109,11 +109,19 @@ export async function POST(req: NextRequest) {
     
     // Parse body
     const body = await req.json();
-    const { from, to, source = 'stooq' } = body;
+    const { from, to, source = 'stooq', sources } = body;
     
     if (!from || !to) {
       return NextResponse.json({
         error: 'Missing required fields: from, to'
+      }, { status: 400 });
+    }
+    
+    // Support sources array (for now only 'metal' supported)
+    const requestedSources = sources || ['metal'];
+    if (!requestedSources.includes('metal')) {
+      return NextResponse.json({
+        error: 'Only metal source supported currently'
       }, { status: 400 });
     }
     
@@ -199,7 +207,14 @@ export async function POST(req: NextRequest) {
     console.log(`[Backfill] Done: ${inserted} inserted, ${updated} updated, ${errors} errors`);
     
     return NextResponse.json({
-      success: true,
+      ok: true,
+      wrote: {
+        metal: inserted + updated
+      },
+      skippedDays: errors,
+      sourceStatus: {
+        metal: errors === 0 ? 'live' : 'partial'
+      },
       summary: {
         timeRange: {
           from: format(startDate, 'yyyy-MM-dd'),
@@ -213,12 +228,11 @@ export async function POST(req: NextRequest) {
       },
       message: `Backfill complete: ${inserted} new, ${updated} updated, ${errors} errors`
     });
-    
   } catch (error: any) {
     console.error('[Backfill] Error:', error);
     
     return NextResponse.json({
-      success: false,
+      ok: false,
       error: error.message
     }, { status: 500 });
   }
