@@ -64,12 +64,22 @@ export async function POST(req: NextRequest) {
   console.log('[API HIT]', new Date().toISOString());
   console.log('[REFRESH_START]', new Date().toISOString());
   
-  // Bearer Auth REQUIRED
+  // Bearer Auth REQUIRED - accepts both CRON_SECRET (server) and REFRESH_TOKEN (client)
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
+  const refreshToken = process.env.NEXT_PUBLIC_REFRESH_TOKEN;
   
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    console.warn('[REFRESH_AUTH_FAIL]', { hasHeader: !!authHeader, hasSecret: !!cronSecret });
+  const validAuth = authHeader && (
+    authHeader === `Bearer ${cronSecret}` || 
+    authHeader === `Bearer ${refreshToken}`
+  );
+  
+  if (!validAuth) {
+    console.warn('[REFRESH_AUTH_FAIL]', { 
+      hasHeader: !!authHeader, 
+      hasCronSecret: !!cronSecret,
+      hasRefreshToken: !!refreshToken 
+    });
     return NextResponse.json(
       { ok: false, error: 'UNAUTHORIZED' },
       { status: 401 }
