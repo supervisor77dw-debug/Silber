@@ -143,24 +143,24 @@ model MetalPrice {
 
 // Retail Prices (Händlerpreise für Premium-Vergleich)
 model RetailPrice {
-  id            String   @id @default(cuid())
-  date          DateTime @db.Date
+  id             String   @id @default(cuid())
+  date           DateTime @db.Date
   
-  provider      String   // "Degussa", "ProAurum", etc.
-  product       String   // "1oz Maple Leaf", "1oz Philharmoniker", etc.
+  provider       String   // "Degussa", "ProAurum", etc.
+  product        String   // "1oz Maple Leaf", "1oz Philharmoniker", etc.
   
-  priceEur      Float    // Preis in EUR
-  fineOz        Float    @default(1.0)  // Feinunzen (meist 1.0)
+  priceEur       Float    @map("price_eur")  // Preis in EUR
+  fineOz         Float    @default(1.0) @map("fine_oz")  // Feinunzen (meist 1.0)
   
   // Calculated fields
-  impliedUsdOz  Float?   // Umgerechnet in USD/oz
-  premiumPercent Float?  // Premium vs Spot in %
+  impliedUsdOz   Float?   @map("implied_usd_oz")  // Umgerechnet in USD/oz
+  premiumPercent Float?   @map("premium_percent")  // Premium vs Spot in %
   
   // Source tracking
-  source        String   @default("manual")  // "manual", "scraper", "api"
-  sourceUrl     String?
+  source         String   @default("manual")  // "manual", "scraper", "api"
+  sourceUrl      String?  @map("source_url")
   
-  fetchedAt     DateTime @default(now()) @db.Timestamptz
+  fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz
   
   @@index([date, provider])
   @@map("retail_prices")
