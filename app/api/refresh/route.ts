@@ -287,14 +287,26 @@ export async function POST(req: NextRequest) {
     console.log('[FETCH_RETAIL_OK]', retailData.length, 'items');
     
     for (const item of retailData) {
-      await prisma.retailPrice.create({
-        data: {
+      await prisma.retailPrice.upsert({
+        where: {
+          date_provider_product: {
+            date: today,
+            provider: item.provider,
+            product: item.product,
+          },
+        },
+        create: {
           date: today,
           provider: item.provider,
           product: item.product,
           priceEur: item.priceEur,
           fineOz: item.fineOz,
           source: 'mock',
+        },
+        update: {
+          priceEur: item.priceEur,
+          fineOz: item.fineOz,
+          fetchedAt: new Date(),
         },
       });
       wrote.retail++;
