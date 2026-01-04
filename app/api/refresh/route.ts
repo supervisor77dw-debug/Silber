@@ -46,14 +46,11 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   console.log('[REFRESH_START]', new Date().toISOString());
   
-  // Bearer Auth erforderlich (optional für Testing)
+  // Bearer Auth REQUIRED
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
   
-  // Temporarily allow requests without auth for testing
-  const isAuthorized = !cronSecret || authHeader === `Bearer ${cronSecret}`;
-  
-  if (!isAuthorized) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     console.warn('[REFRESH_AUTH_FAIL]', { hasHeader: !!authHeader, hasSecret: !!cronSecret });
     return NextResponse.json(
       { ok: false, error: 'UNAUTHORIZED' },
@@ -61,7 +58,7 @@ export async function POST(req: NextRequest) {
     );
   }
   
-  console.log('[AUTH_OK]', { authRequired: !!cronSecret, hasAuth: !!authHeader });
+  console.log('[AUTH_OK]');
   
   const today = startOfDay(new Date());
   const updated: string[] = [];

@@ -70,8 +70,12 @@ export default function Dashboard() {
     setRefreshing(true);
     
     try {
+      const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '';
       const response = await fetch('/api/refresh', { 
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cronSecret}`,
+        },
       });
       
       if (!response.ok) {
