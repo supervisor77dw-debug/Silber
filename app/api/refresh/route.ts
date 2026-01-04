@@ -11,8 +11,10 @@ import {
 } from '@/lib/calculations';
 import { startOfDay, format } from 'date-fns';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+export const revalidate = 0;
 
 /**
  * OPTIONS handler for CORS preflight
