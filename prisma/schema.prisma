@@ -124,18 +124,18 @@ model MetalPrice {
   date          DateTime @unique @db.Date
   
   // Silver spot price (main field for backfill)
-  xagUsdClose   Float
-  xagUsdOpen    Float?
-  xagUsdHigh    Float?
-  xagUsdLow     Float?
+  xagUsdClose   Float    @map("xag_usd_close")
+  xagUsdOpen    Float?   @map("xag_usd_open")
+  xagUsdHigh    Float?   @map("xag_usd_high")
+  xagUsdLow     Float?   @map("xag_usd_low")
   
   volume        Float?
   
   // Source tracking
   source        String   @default("stooq")  // "stooq", "yahoo", "manual"
-  sourceUrl     String?
+  sourceUrl     String?  @map("source_url")
   
-  fetchedAt     DateTime @default(now()) @db.Timestamptz
+  fetchedAt     DateTime @default(now()) @map("fetched_at") @db.Timestamptz
   
   @@index([date])
   @@map("metal_prices")
