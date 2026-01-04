@@ -7,6 +7,29 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
+ * GET handler - Returns API usage instructions
+ */
+export async function GET() {
+  return NextResponse.json({
+    error: 'Method Not Allowed',
+    message: 'This endpoint requires POST method with Authorization header',
+    usage: {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer <your-secret-token>',
+        'Content-Type': 'application/json'
+      },
+      body: {
+        from: '2025-12-01',
+        to: '2025-12-31',
+        sources: ['metal']
+      },
+      example: 'curl -X POST https://silber-ten.vercel.app/api/backfill -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" --data \'{"from":"2025-12-01","to":"2025-12-31","sources":["metal"]}\''
+    }
+  }, { status: 405 });
+}
+
+/**
  * Backfill Endpoint - ARCHITEKTUR-KORREKT
  * 
  * POST /api/backfill

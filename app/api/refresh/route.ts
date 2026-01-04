@@ -17,14 +17,31 @@ export const maxDuration = 60;
 export const revalidate = 0;
 
 /**
+ * GET handler - Returns API usage instructions
+ */
+export async function GET() {
+  return NextResponse.json({
+    error: 'Method Not Allowed',
+    message: 'This endpoint requires POST method with Authorization header',
+    usage: {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer <your-secret-token>'
+      },
+      example: 'curl -X POST https://silber-ten.vercel.app/api/refresh -H "Authorization: Bearer YOUR_TOKEN"'
+    }
+  }, { status: 405 });
+}
+
+/**
  * OPTIONS handler for CORS preflight
  */
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
-      'Allow': 'POST, OPTIONS',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Allow': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     },
   });
