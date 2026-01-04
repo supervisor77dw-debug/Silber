@@ -10,12 +10,13 @@ export const size = {
 };
 export const contentType = 'image/png';
 
-// Image generation
+// Image generation - simple SVG-based icon
 export default function Icon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
+    {
+      type: 'div',
+      props: {
+        style: {
           fontSize: 24,
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           width: '100%',
@@ -25,11 +26,10 @@ export default function Icon() {
           justifyContent: 'center',
           color: 'white',
           fontWeight: 'bold',
-        }}
-      >
-        Ag
-      </div>
-    ),
+        },
+        children: 'Ag',
+      },
+    } as any,
     {
       ...size,
     }
