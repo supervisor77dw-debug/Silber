@@ -15,6 +15,20 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
+ * OPTIONS handler for CORS preflight
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Allow': 'POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    },
+  });
+}
+
+/**
  * Refresh Endpoint - ARCHITEKTUR-KORREKT
  * 
  * Grundregel: Live-APIs schreiben NUR in DB, nie direkt ins UI
