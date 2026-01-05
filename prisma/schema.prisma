@@ -257,3 +257,20 @@ model AlertHistory {
   @@index([date, alertType])
   @@map("alert_history")
 }
+
+// Debug Events (comprehensive logging for troubleshooting)
+model DebugEvent {
+  id        String   @id @default(uuid())
+  ts        DateTime @default(now()) @db.Timestamptz
+  scope     String   // "refresh", "backfill", "ui", "api"
+  source    String   // "fx", "sge", "comex", "retail", "metal", "db"
+  level     String   // "info", "warn", "error"
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  
+  @@index([ts(sort: Desc)])
+  @@index([scope, source])
+  @@index([level])
+  @@map("debug_events")
+}

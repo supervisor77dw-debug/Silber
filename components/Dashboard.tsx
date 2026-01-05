@@ -8,6 +8,7 @@ import StockChart from './StockChart';
 import PriceChart from './PriceChart';
 import DataQuality from './DataQuality';
 import RetailPrices from './RetailPrices';
+import DebugPanel from './DebugPanel';
 import { ToastNotification, useToast } from './ToastNotification';
 import { format } from 'date-fns';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
@@ -36,10 +37,25 @@ interface DbStats {
   };
 }
 
+interface DebugSnapshot {
+  deployment: {
+    env: string;
+    commit: string;
+    region: string;
+    timestamp: string;
+  };
+  dbStats: any;
+  sourceHealth: any;
+  lastRefresh: any;
+  lastErrors: any[];
+  timestamp: string;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
+  const [debugSnapshot, setDebugSnapshot] = useState<DebugSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState(30);
@@ -49,6 +65,8 @@ export default function Dashboard() {
   useEffect(() => {
     fetchDashboardData();
     fetchDbStats();
+    fetchDebugSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDbStats = async () => {
@@ -60,6 +78,18 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.warn('DB stats fetch failed:', err);
+    }
+  };
+
+  const fetchDebugSnapshot = async () => {
+    try {
+      const response = await fetch('/api/debug/snapshot', { cache: 'no-store' });
+      if (response.ok) {
+        const snapshot = await response.json();
+        setDebugSnapshot(snapshot);
+      }
+    } catch (err) {
+      console.warn('Debug snapshot fetch failed:', err);
     }
   };
 
@@ -134,6 +164,7 @@ export default function Dashboard() {
       // WICHTIG: Dashboard aus DB neu laden
       await fetchDashboardData();
       await fetchDbStats();
+      await fetchDebugSnapshot();
       
       // Force router refresh
       router.refresh();
@@ -162,12 +193,22 @@ export default function Dashboard() {
       <>
         <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
         <div className="container mx-auto px-4 py-8 max-w-7xl">
+          {/* Debug Panel - ALWAYS VISIBLE even on error */}
+          <DebugPanel 
+            snapshot={debugSnapshot}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+          />
+          
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-2 text-yellow-900 dark:text-yellow-100">
               Verbindungsproblem
             </h2>
             <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-4">
               Konnte keine Verbindung zur Datenbank herstellen.
+            </p>
+            <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
+              Fehler: {error}
             </p>
             <button
               onClick={fetchDashboardData}
@@ -186,20 +227,23 @@ export default function Dashboard() {
       <>
         <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
         <div className="container mx-auto px-4 py-8 max-w-7xl">
+          {/* Debug Panel - ALWAYS VISIBLE even when DB empty */}
+          <DebugPanel 
+            snapshot={debugSnapshot}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+          />
+          
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-2 text-blue-900 dark:text-blue-100">
-              Keine Daten verfügbar
+              Datenbank ist leer
             </h2>
             <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
-              Die Datenbank ist leer. Führen Sie einen Datenabruf durch.
+              Es sind noch keine Daten vorhanden. Klicken Sie oben auf &ldquo;Start (Refresh)&rdquo; um Daten abzurufen.
             </p>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {refreshing ? 'Lädt...' : 'Daten abrufen'}
-            </button>
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              ℹ️ Das Debug-Panel zeigt alle Details zum Datenbankstatus.
+            </p>
           </div>
         </div>
       </>
@@ -213,6 +257,13 @@ export default function Dashboard() {
       <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
       
       <div className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Debug Panel - ALWAYS VISIBLE */}
+        <DebugPanel 
+          snapshot={debugSnapshot}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+        />
+
         {/* Header */}
         <div className="mb-8 flex justify-between items-start">
           <div className="flex-1">
