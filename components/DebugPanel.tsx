@@ -160,11 +160,22 @@ export default function DebugPanel({
                 <div key={table} className="border border-gray-200 dark:border-gray-700 rounded p-2">
                   <div className="font-medium text-gray-700 dark:text-gray-300">{table}</div>
                   <div className="text-gray-600 dark:text-gray-400">
-                    Count: <span className="font-mono">{stats.count}</span>
+                    <span className="font-mono font-bold">{stats.count}</span> rows
                   </div>
                   {stats.minDate && stats.maxDate && (
                     <div className="text-gray-500 dark:text-gray-500 text-[10px] mt-1">
-                      {stats.minDate} → {stats.maxDate}
+                      {stats.minDate} → <strong>{stats.maxDate}</strong>
+                    </div>
+                  )}
+                  {stats.lastFetch && (
+                    <div className="text-gray-400 dark:text-gray-600 text-[9px] mt-1">
+                      fetched: {new Date(stats.lastFetch).toLocaleTimeString('de-DE')}
+                    </div>
+                  )}
+                  {/* Warning if too few rows */}
+                  {table === 'metal_prices' && stats.count < 30 && (
+                    <div className="text-red-600 dark:text-red-400 text-[10px] mt-1 font-semibold">
+                      ⚠ Need ≥30 rows!
                     </div>
                   )}
                 </div>

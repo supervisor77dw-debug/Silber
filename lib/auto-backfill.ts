@@ -8,7 +8,7 @@ import { subDays, startOfDay, format } from 'date-fns';
  * Prüft ob ein Auto-Backfill nötig ist und führt ihn ggf. aus
  * 
  * Trigger-Bedingungen:
- * - metal_prices hat weniger als 10 Zeilen ODER
+ * - metal_prices hat weniger als 30 Zeilen ODER
  * - neuester Datensatz ist älter als 2 Tage
  * 
  * @returns true wenn Backfill durchgeführt wurde
@@ -26,7 +26,7 @@ export async function checkAndTriggerAutoBackfill(): Promise<{ needed: boolean; 
       ? Math.floor((today.getTime() - startOfDay(latest.date).getTime()) / (1000 * 60 * 60 * 24))
       : 999;
 
-    const needsBackfill = count < 10 || daysSinceLatest > 2;
+    const needsBackfill = count < 30 || daysSinceLatest > 2;
 
     if (!needsBackfill) {
       return {
