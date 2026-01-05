@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { jsonResponseNoCache } from '@/lib/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -40,7 +41,7 @@ export async function GET() {
       select: { date: true, fetchedAt: true, priceUsdPerOz: true },
     });
 
-    return NextResponse.json({
+    return jsonResponseNoCache({
       timestamp: new Date().toISOString(),
       stats: {
         metal_prices: {
@@ -81,12 +82,12 @@ export async function GET() {
       },
     });
   } catch (error) {
-    return NextResponse.json(
+    return jsonResponseNoCache(
       { 
         error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      500
     );
   }
 }

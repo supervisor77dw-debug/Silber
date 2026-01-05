@@ -156,9 +156,11 @@ model RetailPrice {
   impliedUsdOz   Float?   @map("implied_usd_oz")  // Umgerechnet in USD/oz
   premiumPercent Float?   @map("premium_percent")  // Premium vs Spot in %
   
-  // Source tracking
-  source         String   @default("manual")  // "manual", "scraper", "api"
-  sourceUrl      String?  @map("source_url")
+  // Source tracking & verification
+  source              String   @default("manual")  // "manual", "scraper", "api"
+  sourceUrl           String?  @map("source_url")
+  rawExcerpt          String?  @map("raw_excerpt")  // HTML/JSON snippet with price (max 2KB)
+  verificationStatus  String   @default("UNVERIFIED") @map("verification_status")  // "VERIFIED", "UNVERIFIED", "FAILED"
   
   fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz
   

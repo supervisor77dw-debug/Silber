@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { jsonResponseNoCache } from '@/lib/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -154,23 +155,69 @@ export async function GET() {
       console.warn('debug_events table not yet available for errors');
     }
 
-    return NextResponse.json({
+    // 6. Last Writes - zeige letzte 5 Einträge pro Tabelle
+    const [lastMetalWrites, lastRetailWrites] = await Promise.all([
+      prisma.metalPrice.findMany({
+        orderBy: { fetchedAt: 'desc' },
+        take: 5,
+        select: { 
+          date: true, 
+          xagUsdClose: true, 
+          source: true, 
+          fetchedAt: true,
+        },
+      }),
+      prisma.retailPrice.findMany({
+        orderBy: { fetchedAt: 'desc' },
+        take: 5,
+        select: { 
+          date: true, 
+          provider: true, 
+          product: true, 
+          priceEur: true, 
+          verificationStatus: true,
+          source: true, 
+          fetchedAt: true,
+        },
+      }),
+    ]);
+
+    const lastWrites = {
+      metal_prices: lastMetalWrites.map(m => ({
+        date: m.date.toISOString().split('T')[0],
+        price: m.xagUsdClose,
+        source: m.source,
+        fetchedAt: m.fetchedAt.toISOString(),
+      })),
+      retail_prices: lastRetailWrites.map(r => ({
+        date: r.date.toISOString().split('T')[0],
+        provider: r.provider,
+        product: r.product,
+        priceEur: Number(r.priceEur),
+        verificationStatus: r.verificationStatus,
+        source: r.source,
+        fetchedAt: r.fetchedAt.toISOString(),
+      })),
+    };
+
+    return jsonResponseNoCache({
       deployment,
       dbStats,
       sourceHealth,
       lastRefresh,
       lastErrors,
+      lastWrites,
       timestamp: now.toISOString(),
     });
 
   } catch (error) {
     console.error('Debug snapshot error:', error);
-    return NextResponse.json(
+    return jsonResponseNoCache(
       { 
         error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      500
     );
   }
 }

@@ -32,6 +32,23 @@ interface DebugSnapshot {
     message: string;
     meta?: any;
   }>;
+  lastWrites?: {
+    metal_prices: Array<{
+      date: string;
+      price: number;
+      source: string;
+      fetchedAt: string;
+    }>;
+    retail_prices: Array<{
+      date: string;
+      provider: string;
+      product: string;
+      priceEur: number;
+      verificationStatus: string;
+      source: string;
+      fetchedAt: string;
+    }>;
+  };
   timestamp: string;
 }
 
@@ -214,6 +231,59 @@ export default function DebugPanel({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Last Writes - zeige was wirklich in DB geschrieben wurde */}
+          {snapshot.lastWrites && (
+            <div className="bg-white dark:bg-gray-900 rounded p-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                📝 Last Writes (letzte 5)
+              </h3>
+              
+              {/* Metal Prices */}
+              {snapshot.lastWrites.metal_prices.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Metal Prices:
+                  </div>
+                  <div className="space-y-1">
+                    {snapshot.lastWrites.metal_prices.map((write, idx) => (
+                      <div key={idx} className="text-xs text-gray-600 dark:text-gray-400 font-mono">
+                        {write.date} • ${write.price.toFixed(2)} • {write.source}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Retail Prices */}
+              {snapshot.lastWrites.retail_prices.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Retail Prices:
+                  </div>
+                  <div className="space-y-1">
+                    {snapshot.lastWrites.retail_prices.map((write, idx) => (
+                      <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
+                        <span className="font-mono">{write.date}</span> • {write.provider} • {write.product} • €{write.priceEur.toFixed(2)}
+                        {write.verificationStatus === 'UNVERIFIED' && (
+                          <span className="ml-2 px-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded">
+                            ⚠ UNVERIFIED
+                          </span>
+                        )}
+                        <span className="ml-1 text-gray-500">({write.source})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {snapshot.lastWrites.metal_prices.length === 0 && snapshot.lastWrites.retail_prices.length === 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-500">
+                  Keine Writes in DB gefunden
+                </div>
+              )}
             </div>
           )}
 

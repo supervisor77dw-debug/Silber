@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { subDays, startOfDay } from 'date-fns';
+import { jsonResponseNoCache } from '@/lib/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    return jsonResponseNoCache({
       ok: true,
       count: prices.length,
       dateRange: {
@@ -60,12 +61,12 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error('[Metal Prices API Error]:', error);
-    return NextResponse.json(
+    return jsonResponseNoCache(
       { 
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       },
-      { status: 500 }
+      500
     );
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { jsonResponseNoCache } from '@/lib/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,7 +28,7 @@ export async function GET() {
       ORDER BY provider, product, date DESC, fetched_at DESC
     `;
 
-    return NextResponse.json({
+    return jsonResponseNoCache({
       ok: true,
       count: latestPrices.length,
       prices: latestPrices.map(p => ({
@@ -43,12 +44,12 @@ export async function GET() {
     });
   } catch (error) {
     console.error('[Retail Prices API Error]:', error);
-    return NextResponse.json(
+    return jsonResponseNoCache(
       { 
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       },
-      { status: 500 }
+      500
     );
   }
 }

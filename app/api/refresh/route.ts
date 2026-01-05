@@ -264,61 +264,70 @@ export async function POST(req: NextRequest) {
     sourceStatus.sge = 'db';
   }
   
-  // 5) Retail Prices (Degussa, ProAurum)
-  try {
-    console.log('[FETCH_RETAIL_START]');
-    
-    // Mock data - später durch echten Fetch ersetzen
-    const retailData = [
-      {
-        provider: 'Degussa',
-        product: '1oz Maple Leaf',
-        priceEur: 35.50,
-        fineOz: 1.0,
-      },
-      {
-        provider: 'ProAurum',
-        product: '1oz Philharmoniker',
-        priceEur: 35.80,
-        fineOz: 1.0,
-      },
-    ];
-    
-    console.log('[FETCH_RETAIL_OK]', retailData.length, 'items');
-    
-    for (const item of retailData) {
-      await prisma.retailPrice.upsert({
-        where: {
-          date_provider_product: {
+  // 5) Retail Prices (Degussa, ProAurum) - DISABLED IN PRODUCTION bis Parser fertig
+  // REGEL: Keine Mock-Daten in Production!
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      console.log('[FETCH_RETAIL_START] (Development only)');
+      
+      // Mock data - nur für Development
+      const retailData = [
+        {
+          provider: 'Degussa',
+          product: '1oz Maple Leaf',
+          priceEur: 35.50,
+          fineOz: 1.0,
+        },
+        {
+          provider: 'ProAurum',
+          product: '1oz Philharmoniker',
+          priceEur: 35.80,
+          fineOz: 1.0,
+        },
+      ];
+      
+      console.log('[FETCH_RETAIL_OK]', retailData.length, 'items (MOCK)');
+      
+      for (const item of retailData) {
+        await prisma.retailPrice.upsert({
+          where: {
+            date_provider_product: {
+              date: today,
+              provider: item.provider,
+              product: item.product,
+            },
+          },
+          create: {
             date: today,
             provider: item.provider,
             product: item.product,
+            priceEur: item.priceEur,
+            fineOz: item.fineOz,
+            source: 'mock-dev',
           },
-        },
-        create: {
-          date: today,
-          provider: item.provider,
-          product: item.product,
-          priceEur: item.priceEur,
-          fineOz: item.fineOz,
-          source: 'mock',
-        },
-        update: {
-          priceEur: item.priceEur,
-          fineOz: item.fineOz,
-          fetchedAt: new Date(),
-        },
-      });
-      wrote.retail++;
+          update: {
+            priceEur: item.priceEur,
+            fineOz: item.fineOz,
+            fetchedAt: new Date(),
+          },
+        });
+        wrote.retail++;
+      }
+      
+      console.log('[DB_WRITE_OK]', 'retail:', wrote.retail, '(DEV ONLY)');
+      updated.push('retail');
+      sourceStatus.retail = 'live';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[RETAIL_ERROR]', msg);
+      errors.push(`retail: ${msg}`);
+      skipped.push('retail');
+      sourceStatus.retail = 'unavailable';
     }
-    
-    console.log('[DB_WRITE_OK]', 'retail:', wrote.retail);
-    updated.push('retail');
-    sourceStatus.retail = 'live';
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[RETAIL_ERROR]', msg);
-    errors.push(`retail: ${msg}`);
+  } else {
+    // Production: Retail-Fetcher noch nicht implementiert
+    console.log('[RETAIL_SKIP] Retail fetcher not yet implemented in production');
+    errors.push('retail: Not yet implemented (no mock data in production)');
     skipped.push('retail');
     sourceStatus.retail = 'unavailable';
   }

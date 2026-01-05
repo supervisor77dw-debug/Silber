@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { startOfDay, subDays } from 'date-fns';
+import { jsonResponseNoCache } from '@/lib/headers';
+import { checkAndTriggerAutoBackfill } from '@/lib/auto-backfill';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,9 +11,16 @@ export const revalidate = 0;
  * Dashboard API - DB-First approach
  * Always returns data from database, never throws on missing live data
  * Shows latest available data with status indicators
+ * 
+ * AUTO-BACKFILL: Prüft bei jedem Load ob historische Daten fehlen
  */
 export async function GET() {
   try {
+    // Auto-Backfill Check (async, non-blocking für response)
+    checkAndTriggerAutoBackfill().catch(err => {
+      console.warn('[AUTO_BACKFILL_BACKGROUND_ERROR]', err);
+    });
+
     // Get latest spread data from DB
     const latestSpread = await prisma.dailySpread.findFirst({
       orderBy: { date: 'desc' },
@@ -19,7 +28,7 @@ export async function GET() {
 
     if (!latestSpread) {
       // Empty state - no data yet
-      return NextResponse.json({
+      return jsonResponseNoCache({
         isEmpty: true,
         message: 'Noch keine Daten vorhanden. Bitte führen Sie den ersten Datenabruf durch.',
         recommendations: [
@@ -77,7 +86,7 @@ export async function GET() {
         : { status: 'unavailable' as const, asOf: null },
     };
 
-    return NextResponse.json({
+    return jsonResponseNoCache({
       isEmpty: false,
       dataStatus,
       dataDate: latestSpread.date,
@@ -118,7 +127,7 @@ export async function GET() {
     console.error('Dashboard API error:', error);
     
     // Even on error, try to return something useful
-    return NextResponse.json({
+    return jsonResponseNoCache({
       isEmpty: true,
       error: 'Database query failed',
       message: error instanceof Error ? error.message : String(error),
@@ -127,6 +136,6 @@ export async function GET() {
         'Stellen Sie sicher, dass Migrationen ausgeführt wurden',
         'Siehe /api/health für Details',
       ],
-    }, { status: 200 }); // Still 200, not 500
+    }, 200); // Still 200, not 500
   }
 }
