@@ -282,3 +282,30 @@ model DebugEvent {
   @@index([level])
   @@map("debug_events")
 }
+
+// Fetch Runs (observability for all data fetches)
+model FetchRun {
+  id          String    @id @default(uuid())
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  status      String    // "RUNNING", "OK", "PARTIAL", "ERROR"
+  source      String    // "metal", "sge", "fx", "comex_stock", "comex_price", "retail", "backfill"
+  
+  // Counts
+  inserted    Int       @default(0)
+  updated     Int       @default(0)
+  failed      Int       @default(0)
+  
+  // Error tracking
+  errorMessage String?  @map("error_message")
+  sampleUrl    String?  @map("sample_url")
+  
+  // Metadata
+  triggeredBy  String?  @map("triggered_by") // "cron", "manual", "ui"
+  params       Json?    // {days: 30, sources: [...]}
+  
+  @@index([source, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@index([startedAt(sort: Desc)])
+  @@map("fetch_runs")
+}

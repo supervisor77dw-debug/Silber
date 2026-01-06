@@ -55,13 +55,16 @@ export async function GET() {
       })),
     });
   } catch (error) {
+    // NEVER return 500 - return 200 with error status instead
     console.error('[Retail Prices API Error]:', error);
-    return jsonResponseNoCache(
-      { 
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      500
-    );
+    
+    return jsonResponseNoCache({
+      ok: false,
+      count: 0,
+      prices: [],
+      status: 'unverified',
+      error: error instanceof Error ? error.message : String(error),
+      message: 'Retail prices unavailable - scraper may need updating',
+    }, 200); // Status 200 to avoid UI breakage
   }
 }
