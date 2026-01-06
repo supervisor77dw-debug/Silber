@@ -133,7 +133,7 @@ export async function GET() {
       }),
       prisma.retailPrice.findFirst({
         orderBy: { date: 'desc' },
-        select: { date: true, fetchedAt: true, verificationStatus: true },
+        select: { date: true, fetchedAt: true },
       }),
     ]);
 
@@ -141,7 +141,6 @@ export async function GET() {
       count_last_30d: retailCount30d,
       latest_date: retailLatest?.date.toISOString().split('T')[0] || null,
       latest_fetched_at: retailLatest?.fetchedAt.toISOString() || null,
-      verification_status: retailLatest?.verificationStatus || null,
       status: retailCount30d > 0 ? 'ok' : 'empty', // Retail not critical
     };
 

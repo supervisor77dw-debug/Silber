@@ -176,8 +176,7 @@ export async function GET() {
           provider: true, 
           product: true, 
           priceEur: true, 
-          verificationStatus: true,
-          sourceUrl: true,  // CORRECT: sourceUrl not source
+          sourceUrl: true,
           fetchedAt: true,
         },
       }),
@@ -195,8 +194,7 @@ export async function GET() {
         provider: r.provider,
         product: r.product,
         priceEur: Number(r.priceEur),
-        verificationStatus: r.verificationStatus,
-        sourceUrl: r.sourceUrl,  // CORRECT: sourceUrl not source
+        sourceUrl: r.sourceUrl,
         fetchedAt: r.fetchedAt.toISOString(),
       })),
     };
