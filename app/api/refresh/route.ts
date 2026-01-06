@@ -270,23 +270,24 @@ export async function POST(req: NextRequest) {
     try {
       console.log('[FETCH_RETAIL_START] (Development only)');
       
-      // Mock data - nur für Development
+      // Mock data - ERWEITERT: 5-10 Produkte pro Anbieter
       const retailData = [
-        {
-          provider: 'Degussa',
-          product: '1oz Maple Leaf',
-          priceEur: 35.50,
-          fineOz: 1.0,
-        },
-        {
-          provider: 'ProAurum',
-          product: '1oz Philharmoniker',
-          priceEur: 35.80,
-          fineOz: 1.0,
-        },
+        // Degussa (5 Produkte)
+        { provider: 'Degussa', product: '1oz Maple Leaf', priceEur: 35.50, fineOz: 1.0 },
+        { provider: 'Degussa', product: '1oz Philharmoniker', priceEur: 35.80, fineOz: 1.0 },
+        { provider: 'Degussa', product: '1oz American Eagle', priceEur: 36.20, fineOz: 1.0 },
+        { provider: 'Degussa', product: '1oz Känguru', priceEur: 35.90, fineOz: 1.0 },
+        { provider: 'Degussa', product: '1kg Silberbarren', priceEur: 1025.00, fineOz: 32.15 },
+        
+        // ProAurum (5 Produkte)
+        { provider: 'ProAurum', product: '1oz Maple Leaf', priceEur: 35.60, fineOz: 1.0 },
+        { provider: 'ProAurum', product: '1oz Philharmoniker', priceEur: 35.90, fineOz: 1.0 },
+        { provider: 'ProAurum', product: '1oz American Eagle', priceEur: 36.30, fineOz: 1.0 },
+        { provider: 'ProAurum', product: '1oz Britannia', priceEur: 35.70, fineOz: 1.0 },
+        { provider: 'ProAurum', product: '1kg Silberbarren', priceEur: 1030.00, fineOz: 32.15 },
       ];
       
-      console.log('[FETCH_RETAIL_OK]', retailData.length, 'items (MOCK)');
+      console.log('[FETCH_RETAIL_OK]', retailData.length, 'items (MOCK, 5-10 per provider)');
       
       for (const item of retailData) {
         await prisma.retailPrice.upsert({
@@ -304,6 +305,9 @@ export async function POST(req: NextRequest) {
             priceEur: item.priceEur,
             fineOz: item.fineOz,
             source: 'mock-dev',
+            sourceUrl: 'https://dev-mock-data.local',
+            rawExcerpt: `Mock price for ${item.product}`,
+            verificationStatus: 'UNVERIFIED',
           },
           update: {
             priceEur: item.priceEur,
