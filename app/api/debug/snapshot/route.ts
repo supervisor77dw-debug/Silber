@@ -18,9 +18,10 @@ export const revalidate = 0;
  * - lastErrors: last 10 errors from debug_events
  */
 export async function GET() {
+  const queryStart = Date.now();
+  const now = new Date();
+  
   try {
-    const now = new Date();
-    
     // 1. Deployment Info
     const deployment = {
       env: process.env.VERCEL_ENV || process.env.NODE_ENV || 'development',
@@ -176,7 +177,7 @@ export async function GET() {
           product: true, 
           priceEur: true, 
           verificationStatus: true,
-          source: true, 
+          sourceUrl: true,  // CORRECT: sourceUrl not source
           fetchedAt: true,
         },
       }),
@@ -195,10 +196,24 @@ export async function GET() {
         product: r.product,
         priceEur: Number(r.priceEur),
         verificationStatus: r.verificationStatus,
-        source: r.source,
+        sourceUrl: r.sourceUrl,  // CORRECT: sourceUrl not source
         fetchedAt: r.fetchedAt.toISOString(),
       })),
     };
+
+    const queryMs = Date.now() - queryStart;
+
+    // FORENSIC LOG
+    console.log('[API /debug/snapshot] SUCCESS:', {
+      deployment: deployment.env,
+      dbStats: Object.entries(dbStats).map(([table, stats]: [string, any]) => ({
+        table,
+        count: stats.count,
+        maxDate: stats.maxDate,
+      })),
+      queryMs,
+      timestamp: now.toISOString(),
+    });
 
     return jsonResponseNoCache({
       deployment,
@@ -211,13 +226,36 @@ export async function GET() {
     });
 
   } catch (error) {
-    console.error('Debug snapshot error:', error);
-    return jsonResponseNoCache(
-      { 
-        error: error instanceof Error ? error.message : String(error),
+    const queryMs = Date.now() - queryStart;
+    const err = error instanceof Error ? error : new Error(String(error));
+    
+    // FORENSIC ERROR LOG
+    console.error('[API /debug/snapshot] ERROR:', {
+      route: '/api/debug/snapshot',
+      name: err.name,
+      message: err.message,
+      stack: err.stack?.split('\n').slice(0, 10),
+      queryMs,
+      timestamp: new Date().toISOString(),
+    });
+
+    return NextResponse.json(
+      {
+        route: '/api/debug/snapshot',
+        error: true,
+        name: err.name,
+        message: err.message,
+        stack: err.stack?.split('\n').slice(0, 10),
         timestamp: new Date().toISOString(),
       },
-      500
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
     );
   }
 }
