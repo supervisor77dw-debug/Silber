@@ -14,14 +14,22 @@ export const revalidate = 0;
 export async function GET() {
   try {
     // Get latest retail prices - one per provider/product combo
-    // ONLY SELECT COLUMNS THAT EXIST IN PRODUCTION DB
     const latestPrices = await prisma.$queryRaw<any[]>`
       SELECT DISTINCT ON (provider, product)
         date,
         provider,
         product,
         price_eur as "priceEur",
+        price_usd as "priceUsd",
+        currency,
+        fx_rate as "fxRate",
+        fine_oz as "fineOz",
+        implied_usd_oz as "impliedUsdOz",
+        premium_percent as "premiumPercent",
+        source,
         source_url as "sourceUrl",
+        verification_status as "verificationStatus",
+        raw_excerpt as "rawExcerpt",
         fetched_at as "fetchedAt"
       FROM retail_prices
       ORDER BY provider, product, date DESC, fetched_at DESC
@@ -35,7 +43,16 @@ export async function GET() {
         provider: p.provider,
         product: p.product,
         priceEur: Number(p.priceEur),
+        priceUsd: p.priceUsd ? Number(p.priceUsd) : null,
+        currency: p.currency || 'EUR',
+        fxRate: p.fxRate ? Number(p.fxRate) : null,
+        fineOz: Number(p.fineOz || 1.0),
+        impliedUsdOz: p.impliedUsdOz ? Number(p.impliedUsdOz) : null,
+        premiumPercent: p.premiumPercent ? Number(p.premiumPercent) : null,
+        source: p.source || 'scraper',
         sourceUrl: p.sourceUrl,
+        verificationStatus: p.verificationStatus || 'UNVERIFIED',
+        rawExcerpt: p.rawExcerpt,
         fetchedAt: p.fetchedAt.toISOString(),
       })),
     });
