@@ -4,6 +4,7 @@ import { fetchComexStocks } from '@/lib/fetchers/comex';
 import { fetchSgePrice } from '@/lib/fetchers/sge';
 import { fetchFxRateWithRetry } from '@/lib/fetchers/fx';
 import { fetchComexSpotPriceWithRetry } from '@/lib/fetchers/comex-price';
+import { fetchRetailPrices } from '@/lib/fetchers/retail';
 import { 
   calculateSpread, 
   calculateRegisteredPercent,
@@ -264,74 +265,102 @@ export async function POST(req: NextRequest) {
     sourceStatus.sge = 'db';
   }
   
-  // 5) Retail Prices (Degussa, ProAurum) - DISABLED IN PRODUCTION bis Parser fertig
-  // REGEL: Keine Mock-Daten in Production!
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      console.log('[FETCH_RETAIL_START] (Development only)');
-      
-      // Mock data - ERWEITERT: 5-10 Produkte pro Anbieter
-      const retailData = [
-        // Degussa (5 Produkte)
-        { provider: 'Degussa', product: '1oz Maple Leaf', priceEur: 35.50, fineOz: 1.0 },
-        { provider: 'Degussa', product: '1oz Philharmoniker', priceEur: 35.80, fineOz: 1.0 },
-        { provider: 'Degussa', product: '1oz American Eagle', priceEur: 36.20, fineOz: 1.0 },
-        { provider: 'Degussa', product: '1oz Känguru', priceEur: 35.90, fineOz: 1.0 },
-        { provider: 'Degussa', product: '1kg Silberbarren', priceEur: 1025.00, fineOz: 32.15 },
-        
-        // ProAurum (5 Produkte)
-        { provider: 'ProAurum', product: '1oz Maple Leaf', priceEur: 35.60, fineOz: 1.0 },
-        { provider: 'ProAurum', product: '1oz Philharmoniker', priceEur: 35.90, fineOz: 1.0 },
-        { provider: 'ProAurum', product: '1oz American Eagle', priceEur: 36.30, fineOz: 1.0 },
-        { provider: 'ProAurum', product: '1oz Britannia', priceEur: 35.70, fineOz: 1.0 },
-        { provider: 'ProAurum', product: '1kg Silberbarren', priceEur: 1030.00, fineOz: 32.15 },
-      ];
-      
-      console.log('[FETCH_RETAIL_OK]', retailData.length, 'items (MOCK, 5-10 per provider)');
-      
-      for (const item of retailData) {
-        await prisma.retailPrice.upsert({
-          where: {
-            date_provider_product: {
-              date: today,
-              provider: item.provider,
-              product: item.product,
-            },
-          },
-          create: {
-            date: today,
-            provider: item.provider,
-            product: item.product,
-            priceEur: item.priceEur,
-            fineOz: item.fineOz,
-            source: 'mock-dev',
-            sourceUrl: 'https://dev-mock-data.local',
-            rawExcerpt: `Mock price for ${item.product}`,
-            verificationStatus: 'UNVERIFIED',
-          },
-          update: {
-            priceEur: item.priceEur,
-            fineOz: item.fineOz,
-            fetchedAt: new Date(),
-          },
-        });
-        wrote.retail++;
-      }
-      
-      console.log('[DB_WRITE_OK]', 'retail:', wrote.retail, '(DEV ONLY)');
-      updated.push('retail');
-      sourceStatus.retail = 'live';
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[RETAIL_ERROR]', msg);
-      errors.push(`retail: ${msg}`);
-      skipped.push('retail');
-      sourceStatus.retail = 'unavailable';
+  // 5) Retail Prices (Degussa, ProAurum) - PRODUCTION READY
+  // REGEL: NUR echte Daten mit source_url + raw_excerpt!
+  try {
+    console.log('[FETCH_RETAIL_START]');
+    
+    // Get spot price and FX rate for plausibility check
+    let spotPriceUsd = 0;
+    let usdEurRate = 1.1; // Default fallback
+    
+    // Try to get today's metal price (spot)
+    const latestMetal = await prisma.metalPrice.findFirst({
+      where: { date: { lte: today } },
+      orderBy: { date: 'desc' },
+      select: { xagUsdClose: true },
+    });
+    
+    if (latestMetal) {
+      spotPriceUsd = latestMetal.xagUsdClose;
     }
-  } else {
-    // Production: Retail-Fetcher noch nicht implementiert
-    console.log('[RETAIL_SKIP] Retail fetcher not yet implemented in production');
-    errors.push('retail: Not yet implemented (no mock data in production)');
+    
+    // Try to get today's FX rate (USD/EUR)
+    const latestFx = await prisma.fxRate.findFirst({
+      where: { date: { lte: today } },
+      orderBy: { date: 'desc' },
+      select: { usdCnyRate: true },
+    });
+    
+    // Convert USD/CNY to USD/EUR (approximation: EUR ≈ 7.8 CNY)
+    // Better: use actual EUR/USD rate if available
+    if (latestFx) {
+      // Rough conversion: 1 EUR ≈ 1.1 USD (hardcoded for now)
+      // TODO: Fetch actual EUR/USD rate
+      usdEurRate = 1.1; // EUR is stronger than USD
+    }
+    
+    if (spotPriceUsd === 0) {
+      throw new Error('No spot price available for plausibility check');
+    }
+    
+    console.log('[RETAIL_CONTEXT]', { spotPriceUsd, usdEurRate });
+    
+    // Fetch retail prices with plausibility checks
+    const retailResults = await fetchRetailPrices(spotPriceUsd, usdEurRate);
+    
+    console.log('[FETCH_RETAIL_OK]', retailResults.length, 'results');
+    
+    // Write to database using raw SQL for proper UPSERT
+    for (const result of retailResults) {
+      console.log('[RETAIL_RESULT]', {
+        provider: result.provider,
+        product: result.product,
+        priceEur: result.priceEur,
+        status: result.verificationStatus,
+        error: result.errorMessage,
+      });
+      
+      // UPSERT with ON CONFLICT
+      await prisma.$executeRaw`
+        INSERT INTO retail_prices (
+          id, date, provider, product, 
+          price_eur, fine_oz, 
+          source, source_url, raw_excerpt, verification_status,
+          fetched_at
+        )
+        VALUES (
+          gen_random_uuid()::text,
+          ${today}::date,
+          ${result.provider},
+          ${result.product},
+          ${result.priceEur},
+          ${result.fineOz},
+          'scraper',
+          ${result.sourceUrl},
+          ${result.rawExcerpt},
+          ${result.verificationStatus},
+          NOW()
+        )
+        ON CONFLICT (date, provider, product)
+        DO UPDATE SET
+          price_eur = EXCLUDED.price_eur,
+          source_url = EXCLUDED.source_url,
+          raw_excerpt = EXCLUDED.raw_excerpt,
+          verification_status = EXCLUDED.verification_status,
+          fetched_at = EXCLUDED.fetched_at
+      `;
+      
+      wrote.retail++;
+    }
+    
+    console.log('[DB_WRITE_OK]', 'retail:', wrote.retail);
+    updated.push('retail');
+    sourceStatus.retail = 'live';
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[RETAIL_ERROR]', msg);
+    errors.push(`retail: ${msg}`);
     skipped.push('retail');
     sourceStatus.retail = 'unavailable';
   }

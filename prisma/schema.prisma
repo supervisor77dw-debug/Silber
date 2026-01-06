@@ -161,16 +161,17 @@ model RetailPrice {
   premiumPercent Float?   @map("premium_percent")  // Premium vs Spot in %
   
   // Source tracking & verification - MANDATORY for production
-  source              String   @default("manual")  // "manual", "scraper", "api"
-  sourceUrl           String?  @map("source_url")  // REQUIRED: Link to price source
+  source              String   @default("scraper")  // "manual", "scraper", "api"
+  sourceUrl           String   @map("source_url")  // REQUIRED: Link to price source (NOT NULL)
   rawExcerpt          String?  @map("raw_excerpt")  // REQUIRED: HTML/JSON snippet with price (max 2KB)
-  verificationStatus  String   @default("UNVERIFIED") @map("verification_status")  // "VERIFIED", "UNVERIFIED", "FAILED"
+  verificationStatus  String   @default("UNVERIFIED") @map("verification_status")  // "VERIFIED", "UNVERIFIED", "INVALID_PARSE", "FAILED"
   
   fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz
   
   @@unique([date, provider, product])
   @@index([date, provider])
   @@index([verificationStatus])
+  @@index([verificationStatus, date(sort: Desc)], map: "idx_retail_verified")
   @@map("retail_prices")
 }
 

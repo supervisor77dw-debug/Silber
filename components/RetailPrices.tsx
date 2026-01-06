@@ -76,9 +76,28 @@ export default function RetailPrices() {
     );
   }
 
-  // Group by provider
+  // CRITICAL: Filter out unverified prices - NEVER show them!
+  const verifiedPrices = prices.filter(p => 
+    p.verificationStatus === 'VERIFIED' && 
+    p.sourceUrl
+  );
+  
+  const invalidPrices = prices.filter(p => 
+    p.verificationStatus === 'INVALID_PARSE'
+  );
+  
+  const failedPrices = prices.filter(p => 
+    p.verificationStatus === 'FAILED'
+  );
+  
+  const unverifiedPrices = prices.filter(p => 
+    p.verificationStatus === 'UNVERIFIED' ||
+    !p.sourceUrl
+  );
+
+  // Group verified prices by provider
   const byProvider: Record<string, RetailPrice[]> = {};
-  prices.forEach(price => {
+  verifiedPrices.forEach(price => {
     if (!byProvider[price.provider]) {
       byProvider[price.provider] = [];
     }
@@ -91,23 +110,102 @@ export default function RetailPrices() {
         🪙 Retail Prices (Händlerpreise)
       </h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {Object.entries(byProvider).map(([provider, items]) => (
-          <div key={provider} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">
-              {provider}
-            </h3>
-            
-            <div className="space-y-3">
-              {items.map((item, idx) => {
-                // VALIDATION: Skip if missing mandatory fields
-                const hasMandatoryFields = item.sourceUrl && item.verificationStatus;
-                const isUnverified = item.verificationStatus === 'UNVERIFIED';
-                
-                return (
+      {/* WARNING: Show if NO verified prices */}
+      {verifiedPrices.length === 0 && (
+        <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
+            ⚠ Keine verifizierten Retail-Preise
+          </h3>
+          <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-2">
+            Es wurden keine Preise mit gültiger Quelle gefunden.
+          </p>
+          
+          {invalidPrices.length > 0 && (
+            <div className="mt-2 text-sm">
+              <strong className="text-red-700 dark:text-red-400">
+                {invalidPrices.length} ungültige Parse(s):
+              </strong>
+              <ul className="list-disc ml-5 mt-1">
+                {invalidPrices.map((p, i) => (
+                  <li key={i} className="text-gray-700 dark:text-gray-300">
+                    {p.provider} - {p.product}: €{p.priceEur} (zu niedrig/hoch vs Spot)
+                    {p.sourceUrl && (
+                      <a 
+                        href={p.sourceUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="ml-2 text-blue-600 dark:text-blue-400 underline"
+                      >
+                        Quelle prüfen
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {failedPrices.length > 0 && (
+            <div className="mt-2 text-sm">
+              <strong className="text-red-700 dark:text-red-400">
+                {failedPrices.length} Fetch-Fehler:
+              </strong>
+              <ul className="list-disc ml-5 mt-1">
+                {failedPrices.map((p, i) => (
+                  <li key={i} className="text-gray-700 dark:text-gray-300">
+                    {p.provider} - {p.product}
+                    {p.sourceUrl && (
+                      <a 
+                        href={p.sourceUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="ml-2 text-blue-600 dark:text-blue-400 underline"
+                      >
+                        Quelle prüfen
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {unverifiedPrices.length > 0 && (
+            <div className="mt-2 text-sm">
+              <strong className="text-orange-700 dark:text-orange-400">
+                {unverifiedPrices.length} ohne Quelle (nicht angezeigt):
+              </strong>
+              <ul className="list-disc ml-5 mt-1">
+                {unverifiedPrices.map((p, i) => (
+                  <li key={i} className="text-gray-700 dark:text-gray-300">
+                    {p.provider} - {p.product}: €{p.priceEur} 
+                    {!p.sourceUrl && <span className="text-red-600"> (source_url IS NULL)</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* ONLY show verified prices with source */}
+      {Object.keys(byProvider).length === 0 ? (
+        <p className="text-gray-500 dark:text-gray-400">
+          Keine verifizierten Preise. Scraper muss URLs + raw_excerpt liefern.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Object.entries(byProvider).map(([provider, items]) => (
+            <div key={provider} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">
+                {provider} <span className="text-green-600 text-sm">✓ Verified</span>
+              </h3>
+              
+              <div className="space-y-3">
+                {items.map((item, idx) => (
                   <div 
                     key={idx}
-                    className={`border-l-4 ${isUnverified ? 'border-yellow-500' : 'border-blue-500'} bg-gray-50 dark:bg-gray-900/50 p-3 rounded ${!hasMandatoryFields ? 'opacity-50' : ''}`}
+                    className="border-l-4 border-green-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded"
                   >
                     <div className="flex justify-between items-start mb-2">
                       <span className="font-medium text-gray-900 dark:text-white">
@@ -124,24 +222,6 @@ export default function RetailPrices() {
                         )}
                       </div>
                     </div>
-                    
-                    {/* Verification Status Badge */}
-                    {isUnverified && (
-                      <div className="mb-2">
-                        <span className="px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded">
-                          ⚠ UNVERIFIED - Parser prüfen
-                        </span>
-                      </div>
-                    )}
-                    
-                    {/* Warning if missing fields */}
-                    {!hasMandatoryFields && (
-                      <div className="mb-2">
-                        <span className="px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded">
-                          ❌ Missing source_url or verification_status
-                        </span>
-                      </div>
-                    )}
                     
                     <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400">
                       <div>
@@ -185,17 +265,17 @@ export default function RetailPrices() {
                           rel="noopener noreferrer"
                           className="text-blue-600 dark:text-blue-400 hover:underline"
                         >
-                          🔗 Source
+                          🔗 Quelle prüfen
                         </a>
                       )}
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
