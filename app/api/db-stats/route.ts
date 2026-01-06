@@ -12,7 +12,11 @@ export const revalidate = 0;
  * Zeigt ob DB wirklich gelesen wird (nicht Cache)
  */
 export async function GET() {
+  const queryStart = Date.now();
   try {
+    // DB Connection Proof
+    const dbInfo = await prisma.$queryRaw<any[]>`SELECT current_database() as db, current_schema() as schema, inet_server_addr() as host, version() as version`;
+    
     // Metal Prices Stats
     const metalCount = await prisma.metalPrice.count();
     const metalLatest = await prisma.metalPrice.findFirst({
@@ -41,8 +45,26 @@ export async function GET() {
       select: { date: true, fetchedAt: true, priceUsdPerOz: true },
     });
 
+    const queryMs = Date.now() - queryStart;
+
+    // FORENSIC LOG
+    console.log('[API /db-stats] DB_QUERY:', {
+      db: dbInfo[0],
+      tables: ['metal_prices', 'retail_prices', 'fx_rates', 'sge_prices'],
+      counts: { metal: metalCount, retail: retailCount, fx: fxCount, sge: sgeCount },
+      latestDates: {
+        metal: metalLatest?.date.toISOString().split('T')[0],
+        retail: retailLatest?.date.toISOString().split('T')[0],
+        fx: fxLatest?.date.toISOString().split('T')[0],
+        sge: sgeLatest?.date.toISOString().split('T')[0],
+      },
+      queryMs,
+      timestamp: new Date().toISOString(),
+    });
+
     return jsonResponseNoCache({
       timestamp: new Date().toISOString(),
+      db: dbInfo[0],
       stats: {
         metal_prices: {
           count: metalCount,

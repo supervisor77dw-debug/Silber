@@ -13,12 +13,16 @@ export const revalidate = 0;
  * Used for Chart History visualization
  */
 export async function GET(req: NextRequest) {
+  const queryStart = Date.now();
   try {
     const { searchParams } = new URL(req.url);
     const days = parseInt(searchParams.get('days') || '30', 10);
     
     const startDate = startOfDay(subDays(new Date(), days));
 
+    // DB Connection Proof
+    const dbInfo = await prisma.$queryRaw<any[]>`SELECT current_database() as db, current_schema() as schema, inet_server_addr() as host`;
+    
     const prices = await prisma.metalPrice.findMany({
       where: {
         date: {
@@ -38,6 +42,23 @@ export async function GET(req: NextRequest) {
         source: true,
         fetchedAt: true,
       },
+    });
+
+    const minDate = prices.length > 0 ? prices[0].date.toISOString().split('T')[0] : null;
+    const maxDate = prices.length > 0 ? prices[prices.length - 1].date.toISOString().split('T')[0] : null;
+    const queryMs = Date.now() - queryStart;
+
+    // FORENSIC LOG
+    console.log('[API /metal-prices] DB_QUERY:', {
+      table: 'metal_prices',
+      db: dbInfo[0],
+      where: `date >= '${startDate.toISOString().split('T')[0]}'`,
+      orderBy: 'date ASC',
+      rowCount: prices.length,
+      minDate,
+      maxDate,
+      queryMs,
+      timestamp: new Date().toISOString(),
     });
 
     return jsonResponseNoCache({

@@ -29,12 +29,29 @@ interface DashboardData {
 
 interface DbStats {
   timestamp: string;
+  db?: any;
   stats: {
     metal_prices: { count: number; latest: any };
     retail_prices: { count: number; latest: any };
     fx_rates: { count: number; latest: any };
     sge_prices: { count: number; latest: any };
   };
+}
+
+interface HealthzResponse {
+  timestamp: string;
+  db: {
+    connected: boolean;
+    info: any;
+  };
+  sources: {
+    metal: { latest_date: string | null; count_last_30d: number; status: string };
+    sge: { latest_date: string | null; count_last_30d: number; status: string };
+    fx: { latest_date: string | null; count_last_30d: number; status: string };
+    comex: { latest_date: string | null; count_last_30d: number; status: string };
+    retail: { latest_date: string | null; count_last_30d: number; status: string };
+  };
+  overall: string;
 }
 
 interface DebugSnapshot {
@@ -55,6 +72,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
+  const [healthz, setHealthz] = useState<HealthzResponse | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<DebugSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +83,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetchDashboardData();
     fetchDbStats();
+    fetchHealthz();
     fetchDebugSnapshot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -78,6 +97,19 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.warn('DB stats fetch failed:', err);
+    }
+  };
+
+  const fetchHealthz = async () => {
+    try {
+      const response = await fetch('/api/healthz', { cache: 'no-store' });
+      if (response.ok) {
+        const health = await response.json();
+        setHealthz(health);
+        console.log('[Dashboard] healthz loaded:', health);
+      }
+    } catch (err) {
+      console.warn('Healthz fetch failed:', err);
     }
   };
 
@@ -164,6 +196,7 @@ export default function Dashboard() {
       // WICHTIG: Dashboard aus DB neu laden
       await fetchDashboardData();
       await fetchDbStats();
+      await fetchHealthz();
       await fetchDebugSnapshot();
       
       // Force router refresh
@@ -252,6 +285,10 @@ export default function Dashboard() {
 
   const { currentSpread, currentStock, lastFetch, trends, dataStatus, dataDate, daysSinceUpdate } = data;
 
+  // TRUTH: Use healthz for real data status
+  const realDataDate = healthz?.sources.metal.latest_date || dataDate || 'N/A';
+  const realStatus = healthz?.overall || dataStatus || 'unknown';
+
   return (
     <>
       <ToastNotification toasts={toast.toasts} onDismiss={toast.dismissToast} />
@@ -275,9 +312,20 @@ export default function Dashboard() {
             </p>
             <div className="flex items-center gap-2 mt-2">
               <p className="text-sm text-gray-500 dark:text-gray-500">
-                Daten vom: {dataDate || (lastFetch ? format(new Date(lastFetch.fetchedAt), 'dd.MM.yyyy') : 'N/A')}
+                Daten vom: {realDataDate}
               </p>
-              {dataStatus && (
+              {healthz && (
+                <span className={`px-2 py-1 text-xs rounded-full ${
+                  realStatus === 'ok' 
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                    : realStatus === 'degraded'
+                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                }`}>
+                  {realStatus === 'ok' ? '✓ Aktuell' : realStatus === 'degraded' ? '⚠ Veraltet' : '❌ Kritisch'}
+                </span>
+              )}
+              {!healthz && dataStatus && (
                 <span className={`px-2 py-1 text-xs rounded-full ${
                   dataStatus === 'current' 
                     ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
@@ -292,51 +340,63 @@ export default function Dashboard() {
           </div>
           
           {/* DB Debug Stats */}
-          {dbStats && (
+          {(dbStats || healthz) && (
             <div className="ml-8 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-xs space-y-2 max-w-xs">
               <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                📊 DB Live Stats
+                📊 DB Live Stats {healthz && `(${healthz.db.info?.db})`}
               </div>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Metal Prices:</span>
-                  <span className="font-mono text-gray-900 dark:text-white">
-                    {dbStats.stats.metal_prices.count} rows
-                  </span>
-                </div>
-                {dbStats.stats.metal_prices.latest && (
-                  <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
-                    Latest: {dbStats.stats.metal_prices.latest.date} 
-                    {' '}(${dbStats.stats.metal_prices.latest.price?.toFixed(2)})
+              {healthz && (
+                <div className="space-y-1 mb-3 pb-3 border-b border-gray-300 dark:border-gray-700">
+                  <div className="text-[10px] text-gray-500 dark:text-gray-500">
+                    <strong>DB:</strong> {healthz.db.info?.db}@{healthz.db.info?.host}
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Retail Prices:</span>
-                  <span className="font-mono text-gray-900 dark:text-white">
-                    {dbStats.stats.retail_prices.count} rows
-                  </span>
-                </div>
-                {dbStats.stats.retail_prices.latest && (
-                  <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
-                    Latest: {dbStats.stats.retail_prices.latest.provider} - {dbStats.stats.retail_prices.latest.date}
+                  <div className="text-[10px] text-gray-500 dark:text-gray-500">
+                    <strong>Schema:</strong> {healthz.db.info?.schema}
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">FX Rates:</span>
-                  <span className="font-mono text-gray-900 dark:text-white">
-                    {dbStats.stats.fx_rates.count} rows
-                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">SGE Prices:</span>
-                  <span className="font-mono text-gray-900 dark:text-white">
-                    {dbStats.stats.sge_prices.count} rows
-                  </span>
+              )}
+              {dbStats && (
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Metal Prices:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">
+                      {dbStats.stats.metal_prices.count} rows
+                    </span>
+                  </div>
+                  {dbStats.stats.metal_prices.latest && (
+                    <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
+                      Latest: {dbStats.stats.metal_prices.latest.date} 
+                      {' '}(${dbStats.stats.metal_prices.latest.price?.toFixed(2)})
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Retail Prices:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">
+                      {dbStats.stats.retail_prices.count} rows
+                    </span>
+                  </div>
+                  {dbStats.stats.retail_prices.latest && (
+                    <div className="text-gray-500 dark:text-gray-500 text-[10px] pl-2">
+                      Latest: {dbStats.stats.retail_prices.latest.provider} - {dbStats.stats.retail_prices.latest.date}
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">FX Rates:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">
+                      {dbStats.stats.fx_rates.count} rows
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">SGE Prices:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">
+                      {dbStats.stats.sge_prices.count} rows
+                    </span>
+                  </div>
+                  <div className="text-gray-400 dark:text-gray-600 text-[10px] pt-1 border-t border-gray-300 dark:border-gray-700">
+                    {new Date(dbStats.timestamp).toLocaleTimeString('de-DE')}
+                  </div>
                 </div>
-                <div className="text-gray-400 dark:text-gray-600 text-[10px] pt-1 border-t border-gray-300 dark:border-gray-700">
-                  {new Date(dbStats.timestamp).toLocaleTimeString('de-DE')}
-                </div>
-              </div>
+              )}
             </div>
           )}
           

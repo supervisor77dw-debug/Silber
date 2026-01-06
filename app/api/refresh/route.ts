@@ -5,12 +5,13 @@ import { fetchSgePrice } from '@/lib/fetchers/sge';
 import { fetchFxRateWithRetry } from '@/lib/fetchers/fx';
 import { fetchComexSpotPriceWithRetry } from '@/lib/fetchers/comex-price';
 import { fetchRetailPrices } from '@/lib/fetchers/retail';
+import { FetchRunTracker } from '@/lib/fetch-run-tracker';
 import { 
   calculateSpread, 
   calculateRegisteredPercent,
   calculatePhysicalStressIndex 
 } from '@/lib/calculations';
-import { startOfDay, format } from 'date-fns';
+import { startOfDay, format, subDays } from 'date-fns';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,8 +63,12 @@ export async function OPTIONS() {
  * - Gibt Status zurück, UI lädt danach aus DB
  */
 export async function POST(req: NextRequest) {
-  console.log('[API HIT]', new Date().toISOString());
-  console.log('[REFRESH_START]', new Date().toISOString());
+  const startTime = Date.now();
+  console.log('[API /refresh] POST_START:', {
+    timestamp: new Date().toISOString(),
+    url: req.url,
+    headers: Object.fromEntries(req.headers.entries()),
+  });
   
   // Bearer Auth REQUIRED - accepts both CRON_SECRET (server) and REFRESH_TOKEN (client)
   const authHeader = req.headers.get('authorization');
@@ -432,7 +437,16 @@ export async function POST(req: NextRequest) {
   }
   
   // Response: Status only, NO data
-  console.log('[REFRESH_DONE]', { updated, skipped, wrote });
+  const totalMs = Date.now() - startTime;
+  
+  console.log('[API /refresh] POST_COMPLETE:', {
+    duration_ms: totalMs,
+    updated,
+    skipped,
+    wrote,
+    sourceStatus,
+    timestamp: new Date().toISOString(),
+  });
   
   let buildSha = 'unknown';
   try {
@@ -451,6 +465,7 @@ export async function POST(req: NextRequest) {
     sourceStatus,
     wrote,
     build: buildSha,
+    duration_ms: totalMs,
     message: updated.length > 0 
       ? `Updated ${updated.length} sources, skipped ${skipped.length}`
       : 'All sources unavailable, using DB data'

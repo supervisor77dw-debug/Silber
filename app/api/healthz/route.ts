@@ -22,16 +22,18 @@ export async function GET() {
   
   const health: any = {
     timestamp: now.toISOString(),
-    db: { connected: false, error: null },
+    db: { connected: false, error: null, info: null },
     sources: {},
     lastFetchRuns: {},
     overall: 'unknown',
   };
 
+  const queryStart = Date.now();
   try {
-    // Test DB connection
-    await prisma.$queryRaw`SELECT 1`;
+    // Test DB connection + get connection info
+    const dbInfo = await prisma.$queryRaw<any[]>`SELECT current_database() as db, current_schema() as schema, inet_server_addr() as host, version() as version`;
     health.db.connected = true;
+    health.db.info = dbInfo[0];
 
     // Metal Prices (critical)
     const [metalCount30d, metalLatest] = await Promise.all([
@@ -192,6 +194,22 @@ export async function GET() {
     } else {
       health.overall = 'critical';
     }
+
+    const queryMs = Date.now() - queryStart;
+
+    // FORENSIC LOG
+    console.log('[API /healthz] DB_QUERY:', {
+      db: health.db.info,
+      overall: health.overall,
+      sources: Object.entries(health.sources).map(([name, data]: [string, any]) => ({
+        name,
+        status: data.status,
+        count_30d: data.count_last_30d,
+        latest_date: data.latest_date,
+      })),
+      queryMs,
+      timestamp: now.toISOString(),
+    });
 
     return NextResponse.json(health, { 
       status: health.overall === 'critical' ? 500 : 200,
