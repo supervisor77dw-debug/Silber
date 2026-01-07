@@ -380,7 +380,6 @@ export async function POST(req: NextRequest) {
           http_status_code = EXCLUDED.http_status_code,
           fetched_at = EXCLUDED.fetched_at
       `;
-      `;
       
       wrote.retail++;
     }
