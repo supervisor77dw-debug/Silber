@@ -1,13 +1,9 @@
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { format } from 'date-fns';
 import crypto from 'crypto';
 import { DATA_SOURCES, DATE_FORMAT } from '../constants';
 import type { ComexStockData } from '../validators';
-
-const RAW_DATA_DIR = path.join(process.cwd(), 'raw-data', 'comex');
 
 // Validation bounds (oz)
 const VALIDATION = {
@@ -28,23 +24,10 @@ interface ParseMeta {
 }
 
 /**
- * Ensures raw data directory exists
+ * Downloads COMEX Silver Stocks XLS file (in-memory for Vercel Edge)
  */
-async function ensureDataDir() {
+export async function downloadComexXLS(date: Date): Promise<Buffer | null> {
   try {
-    await fs.mkdir(RAW_DATA_DIR, { recursive: true });
-  } catch (error) {
-    console.error('Error creating data directory:', error);
-  }
-}
-
-/**
- * Downloads COMEX Silver Stocks XLS file
- */
-export async function downloadComexXLS(date: Date): Promise<string | null> {
-  try {
-    await ensureDataDir();
-    
     const response = await axios.get(DATA_SOURCES.COMEX_XLS, {
       responseType: 'arraybuffer',
       timeout: 30000,
@@ -54,16 +37,20 @@ export async function downloadComexXLS(date: Date): Promise<string | null> {
       },
     });
 
-    const dateStr = format(date, DATE_FORMAT);
-    const filename = `silver_stocks_${dateStr}.xls`;
-    const filepath = path.join(RAW_DATA_DIR, filename);
-
-    await fs.writeFile(filepath, Buffer.from(response.data));
-    
-    console.log(`✓ Downloaded COMEX XLS to: ${filepath}`);
-    return filepath;
+    const buffer = Buffer.from(response.data);
+    console.log(`✓ Downloaded COMEX XLS (${buffer.length} bytes)`);
+    return buffer;
   } catch (error) {
-    console.error('✗ Error downloading COMEX XLS:', error);
+    if (axios.isAxiosError(error)) {
+      console.error('✗ COMEX XLS download failed:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: DATA_SOURCES.COMEX_XLS,
+        message: error.message,
+      });
+    } else {
+      console.error('✗ Error downloading COMEX XLS:', error);
+    }
     return null;
   }
 }
@@ -207,12 +194,12 @@ function validateStockValues(registered: number, eligible: number, combined: num
 /**
  * Robust COMEX Silver Stocks Parser
  * Auto-detects sheet, headers, and data rows
+ * @param buffer - XLS file buffer (in-memory for Vercel Edge)
  */
-export async function parseComexSilverStocks(filepath: string): Promise<(ComexStockData & { meta: ParseMeta }) | null> {
+export async function parseComexSilverStocks(buffer: Buffer): Promise<(ComexStockData & { meta: ParseMeta }) | null> {
   try {
-    const fileBuffer = await fs.readFile(filepath);
-    const fileHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
-    const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
+    const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     
     // Find the right sheet
     const sheetName = findSilverSheet(workbook);
@@ -332,16 +319,16 @@ export async function parseComexSilverStocks(filepath: string): Promise<(ComexSt
 }
 
 /**
- * Fetches and parses COMEX stock data
+ * Fetches and parses COMEX stock data (in-memory for Vercel Edge)
  */
 export async function fetchComexStocks(date: Date = new Date()): Promise<ComexStockData | null> {
-  const filepath = await downloadComexXLS(date);
+  const buffer = await downloadComexXLS(date);
   
-  if (!filepath) {
+  if (!buffer) {
     return null;
   }
   
-  const result = await parseComexSilverStocks(filepath);
+  const result = await parseComexSilverStocks(buffer);
   
   if (!result) {
     return null;

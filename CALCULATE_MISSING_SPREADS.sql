@@ -29,44 +29,40 @@ SELECT * FROM dates_with_all_data;
 INSERT INTO daily_spreads (
   id,
   date,
-  sge_usd_per_oz,
-  comex_usd_per_oz,
-  spread_usd_per_oz,
-  spread_percent,
+  "sgeUsdPerOz",
+  "comexUsdPerOz",
+  "spreadUsdPerOz",
+  "spreadPercent",
   registered,
   eligible,
   total,
-  registered_percent,
+  "registeredPercent",
   psi,
-  psi_stress_level,
-  data_quality,
-  created_at,
-  updated_at,
-  fetched_at
+  "psiStressLevel",
+  "dataQuality",
+  "createdAt"
 )
 SELECT 
   gen_random_uuid()::text as id,
   mp.date as date,
-  sp.price_usd_per_oz as sge_usd_per_oz,
-  mp.xag_usd_close as comex_usd_per_oz,
-  (sp.price_usd_per_oz - mp.xag_usd_close) as spread_usd_per_oz,
-  ((sp.price_usd_per_oz - mp.xag_usd_close) / mp.xag_usd_close * 100) as spread_percent,
-  cs.total_registered as registered,
-  cs.total_eligible as eligible,
-  cs.total_combined as total,
-  cs.registered_percent,
+  sp."priceUsdPerOz" as "sgeUsdPerOz",
+  mp.xag_usd_close as "comexUsdPerOz",
+  (sp."priceUsdPerOz" - mp.xag_usd_close) as "spreadUsdPerOz",
+  ((sp."priceUsdPerOz" - mp.xag_usd_close) / mp.xag_usd_close * 100) as "spreadPercent",
+  cs."totalRegistered" as registered,
+  cs."totalEligible" as eligible,
+  cs."totalCombined" as total,
+  cs."registeredPercent" as "registeredPercent",
   -- Simple PSI: spread% * (registered/total) * 100
-  (((sp.price_usd_per_oz - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs.total_registered::decimal / NULLIF(cs.total_combined, 0)) * 100) as psi,
+  (((sp."priceUsdPerOz" - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs."totalRegistered"::decimal / NULLIF(cs."totalCombined", 0)) * 100) as psi,
   CASE 
-    WHEN (((sp.price_usd_per_oz - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs.total_registered::decimal / NULLIF(cs.total_combined, 0)) * 100) > 50 THEN 'extreme'
-    WHEN (((sp.price_usd_per_oz - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs.total_registered::decimal / NULLIF(cs.total_combined, 0)) * 100) > 20 THEN 'high'
-    WHEN (((sp.price_usd_per_oz - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs.total_registered::decimal / NULLIF(cs.total_combined, 0)) * 100) > 10 THEN 'moderate'
+    WHEN (((sp."priceUsdPerOz" - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs."totalRegistered"::decimal / NULLIF(cs."totalCombined", 0)) * 100) > 50 THEN 'extreme'
+    WHEN (((sp."priceUsdPerOz" - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs."totalRegistered"::decimal / NULLIF(cs."totalCombined", 0)) * 100) > 20 THEN 'high'
+    WHEN (((sp."priceUsdPerOz" - mp.xag_usd_close) / mp.xag_usd_close * 100) * (cs."totalRegistered"::decimal / NULLIF(cs."totalCombined", 0)) * 100) > 10 THEN 'moderate'
     ELSE 'normal'
-  END as psi_stress_level,
-  'BACKFILLED' as data_quality,
-  NOW() as created_at,
-  NOW() as updated_at,
-  NOW() as fetched_at
+  END as "psiStressLevel",
+  'BACKFILLED' as "dataQuality",
+  NOW() as "createdAt"
 FROM metal_prices mp
 JOIN sge_prices sp ON mp.date = sp.date
 JOIN fx_rates fx ON mp.date = fx.date
@@ -88,12 +84,12 @@ FROM daily_spreads;
 -- Show latest spreads
 SELECT 
   date,
-  sge_usd_per_oz,
-  comex_usd_per_oz,
-  spread_usd_per_oz,
-  spread_percent,
+  "sgeUsdPerOz",
+  "comexUsdPerOz",
+  "spreadUsdPerOz",
+  "spreadPercent",
   registered,
-  data_quality
+  "dataQuality"
 FROM daily_spreads
 ORDER BY date DESC
 LIMIT 10;
