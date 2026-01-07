@@ -25,6 +25,20 @@ interface DashboardData {
   dataStatus?: 'current' | 'yesterday' | 'stale';
   dataDate?: string;
   daysSinceUpdate?: number;
+  sourceStatus?: {
+    sgePrice?: {
+      status: string;
+      asOf: any;
+      provider?: string;
+      exchange?: string;
+      contract?: string;
+      currency?: string;
+      fxSource?: string;
+      fxRate?: number;
+      isEstimated?: boolean;
+    };
+    [key: string]: any;
+  };
 }
 
 interface DbStats {
