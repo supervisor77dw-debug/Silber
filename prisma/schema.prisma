@@ -78,18 +78,18 @@ model SgePrice {
   exchange        String   @default("SGE")              // "SGE", "COMEX", "Estimated"
   contract        String   @default("Ag99.99")          // "Ag99.99", "Ag T+D", "XAG/CNY"
   currency        String   @default("CNY")              // Original currency before conversion
-  fxSource        String   @default("ECB")              // FX rate source: "ECB", "Metals-API"
-  fxRateUsed      Float?                                // USD/CNY rate used for conversion
+  fxSource        String   @default("ECB") @map("fx_source")              // FX rate source: "ECB", "Metals-API"
+  fxRateUsed      Float?   @map("fx_rate_used")                           // USD/CNY rate used for conversion
   
   // Provider tracking
   provider        String?                                // "Metals-API", "TwelveData", "Manual", "COMEX+Premium"
-  isEstimated     Boolean  @default(false)               // true if calculated, not fetched
+  isEstimated     Boolean  @default(false) @map("is_estimated")            // true if calculated, not fetched
   
   // Audit trail
   unit            String   @default("CNY/g")
   sourceUrl       String?
-  conversionSteps String?                                // JSON array: ["1 CNY = 0.05 oz", "Inverted to..."]
-  rawData         String?                                // JSON: full API response for debugging
+  conversionSteps String?  @map("conversion_steps")                       // JSON array: ["1 CNY = 0.05 oz", "Inverted to..."]
+  rawData         String?  @map("raw_data")                               // JSON: full API response for debugging
   metaJson        String?                                // JSON: {source, fetchMethod, warnings}
   fetchedAt       DateTime @default(now()) @db.Timestamptz
   isValidated     Boolean  @default(false)
