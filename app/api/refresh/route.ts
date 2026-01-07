@@ -370,24 +370,30 @@ export async function POST(req: NextRequest) {
     sourceStatus.retail = 'unavailable';
   }
   
-  // 6) Calculate spread if we have all data
+  // 6) Calculate spread from LATEST available data (not just today)
+  // CRITICAL FIX: If APIs fail today but DB has data, we still calculate spreads
   try {
     const latestComexPrice = await prisma.comexPrice.findFirst({
-      where: { marketDate: today },
       orderBy: { marketDate: 'desc' }
     });
     
     const latestSgePrice = await prisma.sgePrice.findFirst({
-      where: { date: today },
       orderBy: { date: 'desc' }
     });
     
     const latestComexStock = await prisma.comexStock.findFirst({
-      where: { date: today },
       orderBy: { date: 'desc' }
     });
     
     if (latestComexPrice && latestSgePrice && latestComexStock) {
+      // Use the OLDEST date among the three sources as spread date
+      // This ensures we only create spreads when ALL data is available for that date
+      const spreadDate = new Date(Math.max(
+        latestComexPrice.marketDate.getTime(),
+        latestSgePrice.date.getTime(),
+        latestComexStock.date.getTime()
+      ));
+      
       const spreadResult = calculateSpread(
         latestSgePrice.priceUsdPerOz,
         latestComexPrice.priceUsdPerOz
@@ -400,9 +406,9 @@ export async function POST(req: NextRequest) {
       });
       
       await prisma.dailySpread.upsert({
-        where: { date: today },
+        where: { date: startOfDay(spreadDate) },
         create: {
-          date: today,
+          date: startOfDay(spreadDate),
           sgeUsdPerOz: latestSgePrice.priceUsdPerOz,
           comexUsdPerOz: latestComexPrice.priceUsdPerOz,
           spreadUsdPerOz: spreadResult.spreadUsdPerOz,
@@ -425,11 +431,26 @@ export async function POST(req: NextRequest) {
           total: latestComexStock.totalCombined,
           registeredPercent: psiResult.registeredPercent,
           psi: psiResult.psi,
-          psiStressLevel: psiResult.stressLevel
+          psiStressLevel: psiResult.stressLevel,
+          fetchedAt: new Date()
         }
       });
       
+      console.log('[SPREAD_CALC_OK]', {
+        spreadDate: format(spreadDate, 'yyyy-MM-dd'),
+        sgePriceDate: format(latestSgePrice.date, 'yyyy-MM-dd'),
+        comexPriceDate: format(latestComexPrice.marketDate, 'yyyy-MM-dd'),
+        comexStockDate: format(latestComexStock.date, 'yyyy-MM-dd'),
+        spreadUsd: spreadResult.spreadUsdPerOz.toFixed(2),
+      });
+      
       updated.push('spread');
+    } else {
+      console.warn('[SPREAD_CALC_SKIP]', {
+        hasComexPrice: !!latestComexPrice,
+        hasSgePrice: !!latestSgePrice,
+        hasComexStock: !!latestComexStock,
+      });
     }
   } catch (err) {
     console.warn('[Refresh] Spread calculation skip:', err instanceof Error ? err.message : String(err));
