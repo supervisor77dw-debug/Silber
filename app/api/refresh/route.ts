@@ -240,20 +240,38 @@ export async function POST(req: NextRequest) {
       const sgeResult = await fetchSgePrice(today, fxRate, latestComexPrice?.priceUsdPerOz);
       
       if (sgeResult && sgeResult.priceUsdPerOz > 0) {
+        const meta = sgeResult.metadata;
+        
         await prisma.sgePrice.upsert({
           where: { date: today },
           create: {
             date: today,
             priceCnyPerGram: sgeResult.priceCnyPerGram,
             priceUsdPerOz: sgeResult.priceUsdPerOz,
-            fxRateUsed: fxRate,
+            // CRITICAL: Store provider metadata for transparency
+            exchange: meta.rawData.source === 'Metals-API' || meta.rawData.source === 'TwelveData' ? 'SGE' : meta.rawData.source,
+            contract: meta.rawData.symbol || 'Ag99.99',
+            currency: meta.rawData.currency,
+            fxSource: 'ECB',
+            fxRateUsed: meta.fxRateUsed,
+            provider: meta.source,
+            isEstimated: meta.isEstimated,
+            conversionSteps: JSON.stringify(meta.conversionSteps),
+            rawData: JSON.stringify(meta.rawData),
             sourceUrl: 'multi-provider',
             isValidated: true
           },
           update: {
             priceCnyPerGram: sgeResult.priceCnyPerGram,
             priceUsdPerOz: sgeResult.priceUsdPerOz,
-            fxRateUsed: fxRate,
+            exchange: meta.rawData.source === 'Metals-API' || meta.rawData.source === 'TwelveData' ? 'SGE' : meta.rawData.source,
+            contract: meta.rawData.symbol || 'Ag99.99',
+            currency: meta.rawData.currency,
+            fxRateUsed: meta.fxRateUsed,
+            provider: meta.source,
+            isEstimated: meta.isEstimated,
+            conversionSteps: JSON.stringify(meta.conversionSteps),
+            rawData: JSON.stringify(meta.rawData),
             fetchedAt: new Date()
           }
         });
@@ -332,6 +350,7 @@ export async function POST(req: NextRequest) {
           id, date, provider, product, 
           price_eur, fine_oz, 
           source, source_url, raw_excerpt, verification_status,
+          discovery_strategy, attempted_urls, http_status_code,
           fetched_at
         )
         VALUES (
@@ -345,6 +364,9 @@ export async function POST(req: NextRequest) {
           ${result.sourceUrl},
           ${result.rawExcerpt},
           ${result.verificationStatus},
+          ${result.discoveryStrategy || null},
+          ${result.attemptedUrls ? JSON.stringify(result.attemptedUrls) : null},
+          ${result.errorMessage?.includes('404') ? 404 : result.errorMessage?.includes('500') ? 500 : null},
           NOW()
         )
         ON CONFLICT (date, provider, product)
@@ -353,7 +375,11 @@ export async function POST(req: NextRequest) {
           source_url = EXCLUDED.source_url,
           raw_excerpt = EXCLUDED.raw_excerpt,
           verification_status = EXCLUDED.verification_status,
+          discovery_strategy = EXCLUDED.discovery_strategy,
+          attempted_urls = EXCLUDED.attempted_urls,
+          http_status_code = EXCLUDED.http_status_code,
           fetched_at = EXCLUDED.fetched_at
+      `;
       `;
       
       wrote.retail++;

@@ -1,4 +1,4 @@
-import { fetchSgePriceWithProviders } from '../providers/sgePriceProvider';
+import { fetchSgePriceWithProviders, type SgePriceNormalized } from '../providers/sgePriceProvider';
 import type { SgePriceData } from '../validators';
 
 /**
@@ -14,7 +14,7 @@ export async function fetchSgePrice(
   date: Date, 
   usdCnyRate: number,
   comexPriceUsd?: number | null
-): Promise<SgePriceData | null> {
+): Promise<(SgePriceData & { metadata: SgePriceNormalized }) | null> {
   try {
     const result = await fetchSgePriceWithProviders(date, usdCnyRate, comexPriceUsd);
     
@@ -29,6 +29,7 @@ export async function fetchSgePrice(
       date,
       priceCnyPerGram: result.priceCnyPerGram,
       priceUsdPerOz: result.priceUsdPerOz,
+      metadata: result, // Full provider metadata for DB storage
     };
     
   } catch (error) {

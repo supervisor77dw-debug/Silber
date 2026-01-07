@@ -76,7 +76,18 @@ export async function GET() {
         ? { status: startOfDay(latestComexStock.date).getTime() === dataDate.getTime() ? 'ok' : 'stale', asOf: latestComexStock.date }
         : { status: 'unavailable' as const, asOf: null },
       sgePrice: latestSgePrice
-        ? { status: startOfDay(latestSgePrice.date).getTime() === dataDate.getTime() ? 'ok' : 'stale', asOf: latestSgePrice.date }
+        ? { 
+            status: startOfDay(latestSgePrice.date).getTime() === dataDate.getTime() ? 'ok' : 'stale', 
+            asOf: latestSgePrice.date,
+            // CRITICAL: Expose SGE metadata for transparency
+            provider: latestSgePrice.provider || 'Unknown',
+            exchange: latestSgePrice.exchange || 'SGE',
+            contract: latestSgePrice.contract || 'Ag99.99',
+            currency: latestSgePrice.currency || 'CNY',
+            fxSource: latestSgePrice.fxSource || 'ECB',
+            fxRate: latestSgePrice.fxRateUsed || null,
+            isEstimated: latestSgePrice.isEstimated || false,
+          }
         : { status: 'unavailable' as const, asOf: null },
       fxRate: latestFxRate
         ? { status: startOfDay(latestFxRate.date).getTime() === dataDate.getTime() ? 'ok' : 'stale', asOf: latestFxRate.date }

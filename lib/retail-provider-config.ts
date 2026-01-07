@@ -42,7 +42,7 @@ export interface RetailProviderConfig {
 /**
  * PRODUCTION PROVIDER CONFIGS
  * 
- * CRITICAL: Verify these URLs manually before deploying!
+ * CRITICAL: Use category-based discovery, NO hardcoded product URLs
  */
 export const RETAIL_PROVIDERS: RetailProviderConfig[] = [
   {
@@ -52,15 +52,15 @@ export const RETAIL_PROVIDERS: RetailProviderConfig[] = [
     products: [
       {
         product: '1oz Philharmoniker',
-        directUrl: '/silbermuenzen/oesterreich/1-oz-philharmoniker-silbermuenze',
+        directUrl: null, // No hardcoded URL - use discovery
         matcher: {
-          keywords: ['philharmoniker', '1 oz', 'silber'],
+          keywords: ['philharmoniker', '1 oz', 'silber', 'österreich'],
           exactName: 'Philharmoniker 1 oz Silber',
           fineOz: 1.0,
         },
-        discoveryStrategy: ['direct-url', 'site-search', 'category-browse'],
+        discoveryStrategy: ['category-browse', 'site-search'],
         searchPath: '/search?q=philharmoniker+1+oz+silber',
-        categoryPath: '/silbermuenzen/oesterreich',
+        categoryPath: '/shop/silber/', // Base category from user requirement
       },
     ],
     selectors: {
@@ -86,15 +86,15 @@ export const RETAIL_PROVIDERS: RetailProviderConfig[] = [
     products: [
       {
         product: '1oz Maple Leaf',
-        directUrl: '/silbermuenzen/maple-leaf-1-oz',
+        directUrl: null, // No hardcoded URL - use discovery
         matcher: {
-          keywords: ['maple leaf', '1 oz', 'silber'],
+          keywords: ['maple leaf', '1 oz', 'silber', 'kanada'],
           exactName: 'Maple Leaf 1 oz Silber',
           fineOz: 1.0,
         },
-        discoveryStrategy: ['direct-url', 'site-search', 'category-browse'],
+        discoveryStrategy: ['category-browse', 'site-search'],
         searchPath: '/search?q=maple+leaf+1+oz',
-        categoryPath: '/silbermuenzen',
+        categoryPath: '/silber/silbermuenzen/', // From user requirement
       },
     ],
     selectors: {

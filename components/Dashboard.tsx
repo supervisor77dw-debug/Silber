@@ -440,6 +440,11 @@ export default function Dashboard() {
           value={currentSpread.sgeUsdPerOz.toFixed(2)}
           unit="USD/oz"
           subtitle={`COMEX: $${currentSpread.comexUsdPerOz.toFixed(2)}`}
+          tooltip={
+            data.sourceStatus?.sgePrice && data.sourceStatus.sgePrice.status !== 'unavailable' 
+              ? `Provider: ${data.sourceStatus.sgePrice.provider}\nExchange: ${data.sourceStatus.sgePrice.exchange}\nContract: ${data.sourceStatus.sgePrice.contract}\nCurrency: ${data.sourceStatus.sgePrice.currency}\nFX Source: ${data.sourceStatus.sgePrice.fxSource} (${data.sourceStatus.sgePrice.fxRate?.toFixed(4)})\n${data.sourceStatus.sgePrice.isEstimated ? '⚠ ESTIMATED' : '✓ Live Data'}`
+              : undefined
+          }
         />
       </div>
 

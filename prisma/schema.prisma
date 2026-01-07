@@ -74,11 +74,23 @@ model SgePrice {
   // Converted to USD/oz
   priceUsdPerOz   Float
   
-  // Metadata
+  // Metadata - REQUIRED for transparency
+  exchange        String   @default("SGE")              // "SGE", "COMEX", "Estimated"
+  contract        String   @default("Ag99.99")          // "Ag99.99", "Ag T+D", "XAG/CNY"
+  currency        String   @default("CNY")              // Original currency before conversion
+  fxSource        String   @default("ECB")              // FX rate source: "ECB", "Metals-API"
+  fxRateUsed      Float?                                // USD/CNY rate used for conversion
+  
+  // Provider tracking
+  provider        String?                                // "Metals-API", "TwelveData", "Manual", "COMEX+Premium"
+  isEstimated     Boolean  @default(false)               // true if calculated, not fetched
+  
+  // Audit trail
   unit            String   @default("CNY/g")
   sourceUrl       String?
-  fxRateUsed      Float?   // USD/CNY rate used for conversion
-  metaJson        String?  // JSON: {source, fetchMethod, warnings}
+  conversionSteps String?                                // JSON array: ["1 CNY = 0.05 oz", "Inverted to..."]
+  rawData         String?                                // JSON: full API response for debugging
+  metaJson        String?                                // JSON: {source, fetchMethod, warnings}
   fetchedAt       DateTime @default(now()) @db.Timestamptz
   isValidated     Boolean  @default(false)
   
@@ -165,6 +177,10 @@ model RetailPrice {
   sourceUrl           String   @map("source_url")  // REQUIRED: Link to price source (NOT NULL)
   rawExcerpt          String?  @map("raw_excerpt")  // REQUIRED: HTML/JSON snippet with price (max 2KB)
   verificationStatus  String   @default("UNVERIFIED") @map("verification_status")  // "VERIFIED", "UNVERIFIED", "INVALID_PARSE", "FAILED"
+  // Discovery tracking (CRITICAL for debugging)
+  discoveryStrategy  String?  @map("discovery_strategy")     // "direct-url", "site-search", "category-browse"
+  attemptedUrls      String?  @map("attempted_urls")          // JSON array: ["url1", "url2"]
+  httpStatusCode     Int?     @map("http_status_code")        // 200, 404, 500, etc.
   
   fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz
   

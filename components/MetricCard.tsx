@@ -5,9 +5,10 @@ interface MetricCardProps {
   trend?: 'up' | 'down' | 'stable';
   subtitle?: string;
   highlight?: boolean;
+  tooltip?: string;
 }
 
-export default function MetricCard({ title, value, unit, trend, subtitle, highlight }: MetricCardProps) {
+export default function MetricCard({ title, value, unit, trend, subtitle, highlight, tooltip }: MetricCardProps) {
   const getTrendIcon = () => {
     if (!trend || trend === 'stable') return null;
     return trend === 'up' ? '↑' : '↓';
@@ -19,9 +20,19 @@ export default function MetricCard({ title, value, unit, trend, subtitle, highli
   };
 
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow p-6 ${highlight ? 'ring-2 ring-yellow-500' : ''}`}>
+    <div 
+      className={`bg-white dark:bg-gray-800 rounded-lg shadow p-6 ${highlight ? 'ring-2 ring-yellow-500' : ''} group relative`}
+      title={tooltip}
+    >
       <div className="flex justify-between items-start mb-2">
-        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</h3>
+        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center gap-1">
+          {title}
+          {tooltip && (
+            <span className="text-xs text-blue-500 cursor-help" title={tooltip}>
+              ℹ️
+            </span>
+          )}
+        </h3>
         {trend && (
           <span className={`text-xl ${getTrendColor()}`}>
             {getTrendIcon()}

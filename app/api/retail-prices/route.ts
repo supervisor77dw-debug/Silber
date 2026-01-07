@@ -30,6 +30,9 @@ export async function GET() {
         source_url as "sourceUrl",
         verification_status as "verificationStatus",
         raw_excerpt as "rawExcerpt",
+        discovery_strategy as "discoveryStrategy",
+        attempted_urls as "attemptedUrls",
+        http_status_code as "httpStatusCode",
         fetched_at as "fetchedAt"
       FROM retail_prices
       ORDER BY provider, product, date DESC, fetched_at DESC
@@ -53,6 +56,10 @@ export async function GET() {
         sourceUrl: p.sourceUrl,
         verificationStatus: p.verificationStatus || 'UNVERIFIED',
         rawExcerpt: p.rawExcerpt,
+        // Discovery tracking for debugging
+        discoveryStrategy: p.discoveryStrategy,
+        attemptedUrls: p.attemptedUrls,
+        httpStatusCode: p.httpStatusCode,
         fetchedAt: p.fetchedAt.toISOString(),
       })),
     });

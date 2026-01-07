@@ -16,6 +16,10 @@ interface RetailPrice {
   fetchedAt: string;
   sourceUrl?: string | null;
   verificationStatus?: string;
+  // Discovery tracking (CRITICAL for debugging)
+  discoveryStrategy?: string | null;
+  attemptedUrls?: string | null; // JSON array
+  httpStatusCode?: number | null;
 }
 
 export default function RetailPrices() {
@@ -150,22 +154,52 @@ export default function RetailPrices() {
               <strong className="text-red-700 dark:text-red-400">
                 {failedPrices.length} Fetch-Fehler:
               </strong>
-              <ul className="list-disc ml-5 mt-1">
-                {failedPrices.map((p, i) => (
-                  <li key={i} className="text-gray-700 dark:text-gray-300">
-                    {p.provider} - {p.product}
-                    {p.sourceUrl && (
-                      <a 
-                        href={p.sourceUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="ml-2 text-blue-600 dark:text-blue-400 underline"
-                      >
-                        Quelle prüfen
-                      </a>
-                    )}
-                  </li>
-                ))}
+              <ul className="list-disc ml-5 mt-1 space-y-2">
+                {failedPrices.map((p, i) => {
+                  let attemptedUrls: string[] = [];
+                  try {
+                    if (p.attemptedUrls) {
+                      attemptedUrls = JSON.parse(p.attemptedUrls);
+                    }
+                  } catch (e) {
+                    // Invalid JSON
+                  }
+                  
+                  return (
+                    <li key={i} className="text-gray-700 dark:text-gray-300">
+                      <div className="font-semibold">
+                        {p.provider} - {p.product}
+                      </div>
+                      {p.httpStatusCode && (
+                        <div className="text-xs text-red-600 dark:text-red-400">
+                          HTTP {p.httpStatusCode}
+                        </div>
+                      )}
+                      {p.discoveryStrategy && (
+                        <div className="text-xs text-gray-500">
+                          Strategy: {p.discoveryStrategy}
+                        </div>
+                      )}
+                      {attemptedUrls.length > 0 && (
+                        <div className="text-xs mt-1">
+                          <div className="text-gray-500">Attempted URLs:</div>
+                          {attemptedUrls.map((url, idx) => (
+                            <div key={idx} className="ml-2 truncate">
+                              <a 
+                                href={url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline"
+                              >
+                                {url}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
