@@ -312,7 +312,11 @@ export function extractPriceFromHtml(
   
   // Also try JSON-LD structured data
   try {
+    let jsonLdResult: { price: number; rawExcerpt: string } | null = null;
+    
     $('script[type="application/ld+json"]').each((_, elem) => {
+      if (jsonLdResult) return false; // Stop if already found
+      
       const jsonText = $(elem).html();
       if (!jsonText) return;
       
@@ -328,10 +332,11 @@ export function extractPriceFromHtml(
             if (offers.price) {
               const price = parseFloat(offers.price);
               if (!isNaN(price) && price > 0) {
-                return {
+                jsonLdResult = {
                   price,
                   rawExcerpt: `JSON-LD: ${JSON.stringify(offers).substring(0, 500)}`,
                 };
+                return false; // Stop iteration
               }
             }
           }
@@ -340,6 +345,8 @@ export function extractPriceFromHtml(
         // Invalid JSON, skip
       }
     });
+    
+    if (jsonLdResult) return jsonLdResult;
   } catch {
     // JSON-LD parsing failed
   }
