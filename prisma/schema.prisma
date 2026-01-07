@@ -79,7 +79,7 @@ model SgePrice {
   contract        String   @default("Ag99.99")          // "Ag99.99", "Ag T+D", "XAG/CNY"
   currency        String   @default("CNY")              // Original currency before conversion
   fxSource        String   @default("ECB") @map("fx_source")              // FX rate source: "ECB", "Metals-API"
-  fxRateUsed      Float?   @map("fx_rate_used")                           // USD/CNY rate used for conversion
+  fxRateUsed      Float?                                // USD/CNY rate used for conversion (EXISTING column from old schema)
   
   // Provider tracking
   provider        String?                                // "Metals-API", "TwelveData", "Manual", "COMEX+Premium"
