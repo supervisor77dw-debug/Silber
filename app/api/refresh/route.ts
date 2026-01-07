@@ -431,8 +431,7 @@ export async function POST(req: NextRequest) {
           total: latestComexStock.totalCombined,
           registeredPercent: psiResult.registeredPercent,
           psi: psiResult.psi,
-          psiStressLevel: psiResult.stressLevel,
-          fetchedAt: new Date()
+          psiStressLevel: psiResult.stressLevel
         }
       });
       
